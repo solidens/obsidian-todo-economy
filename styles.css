@@ -1,0 +1,86 @@
+/* Todo Economy — ASCII-панель.
+   Цвета берутся из темы Obsidian: плагин не навязывает свою палитру. */
+
+.te-root {
+  padding: 8px 10px;
+  overflow-x: auto;
+}
+
+.te-grid {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-small);
+  line-height: 1.55;
+  color: var(--text-normal);
+  white-space: pre;
+  /* лигатуры склеивают -- и => в один глиф и ломают сетку */
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+.te-ln {
+  min-height: 1.55em;
+}
+
+/* Точка попадания: на вид ASCII, на деле кнопка.
+   Нулевые паддинги и границы — иначе поедет сетка. */
+.te-hit,
+.te-in {
+  font: inherit;
+  line-height: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+  padding: 0;
+  margin: 0;
+  box-shadow: none;
+  white-space: pre;
+  height: auto;
+  min-height: 0;
+  vertical-align: baseline;
+}
+
+.te-hit {
+  cursor: pointer;
+}
+
+.te-hit:hover {
+  background: var(--background-modifier-hover);
+}
+
+.te-hit:focus-visible,
+.te-in:focus-visible {
+  outline: 1px solid var(--interactive-accent);
+  outline-offset: 0;
+}
+
+.te-in {
+  caret-color: var(--interactive-accent);
+}
+
+.te-in::placeholder {
+  color: var(--text-faint);
+}
+
+.te-dim    { color: var(--text-muted); }
+.te-faint  { color: var(--text-faint); }
+.te-acc    { color: var(--interactive-accent); }
+.te-good   { color: var(--color-green); }
+.te-warn   { color: var(--color-orange); }
+.te-bad    { color: var(--color-red); }
+.te-strike { color: var(--text-faint); text-decoration: line-through; }
+
+.te-settings-list {
+  margin: 0 0 1em;
+  padding-left: 1.2em;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.te-settings-list li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+}

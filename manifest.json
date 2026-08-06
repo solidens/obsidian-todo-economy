@@ -1,0 +1,10 @@
+{
+  "id": "todo-economy",
+  "name": "Todo Economy",
+  "version": "1.0.0",
+  "minAppVersion": "1.6.0",
+  "description": "Тудушник, где выполненные задачи приносят баллы, а баллы тратятся на награды. Цены не выдуманы: система решает их из твоего реального месячного прихода. Интерфейс — ASCII.",
+  "author": "solidens",
+  "authorUrl": "https://github.com/solidens",
+  "isDesktopOnly": false
+}

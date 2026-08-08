@@ -87,6 +87,11 @@ export function parseTasks(text: string): ParsedTask[] {
 				else if (/^p[\d.]+$/.test(tok)) t.prio = sane.prio(num(tok.slice(1), DEFAULTS.prio));
 				else if (/^due\d{4}-\d{2}-\d{2}$/.test(tok)) t.due = tok.slice(3);
 				else if (/^done\d{4}-\d{2}-\d{2}$/.test(tok)) t.doneOn = tok.slice(4);
+				else if (/^rep\d+[dw]$/.test(tok)) {
+					const n = Number(tok.slice(3, -1));
+					const days = tok.endsWith('w') ? n * 7 : n;
+					if (days >= 1 && days <= 365) t.repeat = days;
+				}
 				else if (/^~[a-z0-9]+$/.test(tok)) t.id = tok.slice(1);
 				else t.extra.push(tok);
 			}
@@ -115,6 +120,7 @@ const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
 export function serializeSpan(t: Task): string {
 	const tok = [`${Math.round(t.min)}m`, `d${fmt(t.diff)}`, `p${fmt(t.prio)}`];
+	if (t.repeat) tok.push(t.repeat % 7 === 0 ? `rep${t.repeat / 7}w` : `rep${t.repeat}d`);
 	if (t.due) tok.push(`due${t.due}`);
 	if (t.done && t.doneOn) tok.push(`done${t.doneOn}`);
 	tok.push(...t.extra);

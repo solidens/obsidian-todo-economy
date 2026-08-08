@@ -6,6 +6,7 @@
 import { ItemView, Notice, TFile, WorkspaceLeaf } from 'obsidian';
 import type { Brain } from '../brain';
 import { buy, checkBuy, earn, undo } from '../core/ledger';
+import { dayKey } from '../core/time';
 import type { Store } from '../store';
 import * as A from './ascii';
 import { render, type Pomodoro, type Tab } from './screens';
@@ -20,11 +21,12 @@ export class EconomyView extends ItemView {
 	private brain: Brain;
 	private tab: Tab = 'goals';
 	private cols = 48;
-	private cw = 8;
+	private textCols = 44;
+	private profile: A.FontProfile = { cell: 8, prose: 8, kind: 'mono', wide: [], gridSafe: true };
+	private glyphs: A.Glyphs = A.GLYPH_SETS.unicode;
 	private hits: HTMLElement[] = [];
 	private grid!: HTMLElement;
 	private ro: ResizeObserver | null = null;
-	private auditDone = false;
 	private pomo: Pomodoro = { taskId: null, left: WORK, running: false, rest: false };
 
 	constructor(leaf: WorkspaceLeaf, store: Store, brain: Brain) {
@@ -56,41 +58,41 @@ export class EconomyView extends ItemView {
 
 		this.brain.greet();
 		if (!this.store.state.onboarded) this.tab = 'chat';
-		this.remeasure();
+		this.refit();
 	}
 
 	async onClose(): Promise<void> {
 		this.contentEl.empty();
 	}
 
-	/* ── отрисовка ─────────────────────────────────────────────────────── */
-
-	private remeasure(): void {
-		const cw = A.charWidth(this.grid);
-		const cols = A.colsFor(this.grid, cw);
-		const changed = cols !== this.cols;
-		this.cw = cw;
-		this.cols = cols;
-		if (changed || !this.hits.length) this.draw();
-		if (!this.auditDone && this.cw > 0) this.audit();
-	}
+	/* ── шрифт и метрики ───────────────────────────────────────────────── */
 
 	/**
-	 * Проверка шрифта один раз за сессию: если моноширинный шрифт рисует
-	 * псевдографику не в одну ячейку, вся сетка разъедется — и лучше сказать
-	 * об этом прямо, чем оставить человека гадать.
+	 * Полный пересчёт: применить шрифт, обмерить его, выбрать псевдографику.
+	 * Дороже, чем remeasure, поэтому вызывается только на открытии и на
+	 * смене настроек, а не на каждое движение границы панели.
 	 */
-	private audit(): void {
-		this.auditDone = true;
-		const bad = A.auditGlyphs(this.grid);
-		if (bad.length) {
-			new Notice(
-				`Todo Economy: шрифт панели рисует ${bad.join(' ')} не в одну ячейку — рамки поедут. ` +
-				`Поменяй моноширинный шрифт в настройках Obsidian.`,
-				10000,
-			);
-		}
+	refit(): void {
+		const font = this.store.state.panelFont.trim();
+		this.grid.style.fontFamily = font ? `${font}, var(--font-monospace)` : '';
+
+		this.profile = A.probeFont(this.grid, A.GLYPH_SETS.unicode);
+		this.glyphs = A.pickGlyphs(this.store.state.glyphMode, this.profile.gridSafe);
+		this.remeasure(true);
 	}
+
+	private remeasure(force = false): void {
+		const cols = A.colsFor(this.grid, this.profile.cell);
+		const textCols = A.textColsFor(this.grid, this.profile.prose);
+		const changed = cols !== this.cols || textCols !== this.textCols;
+		this.cols = cols;
+		this.textCols = textCols;
+		if (force || changed || !this.hits.length) this.draw();
+	}
+
+	get fontProfile(): A.FontProfile { return this.profile; }
+
+	/* ── отрисовка ─────────────────────────────────────────────────────── */
 
 	private draw(): void {
 		this.hits = A.paint(
@@ -98,6 +100,8 @@ export class EconomyView extends ItemView {
 			render({
 				store: this.store,
 				cols: this.cols,
+				textCols: this.textCols,
+				g: this.glyphs,
 				tab: this.tab,
 				pomo: this.pomo,
 				busy: this.brain.busy,
@@ -154,7 +158,7 @@ export class EconomyView extends ItemView {
 			case 'toggle': {
 				const current = this.store.tasks.find((t) => t.id === id);
 				if (!current) return;
-				const next = await this.store.setDone(id, !current.done);
+				const next = await this.store.setDone(id, !current.done, dayKey());
 				if (!next) return;
 				if (next.done) {
 					const got = earn(s, next);

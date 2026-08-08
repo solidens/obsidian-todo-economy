@@ -13,6 +13,7 @@
 import { Notice, TFile, type App, type Plugin } from 'obsidian';
 import * as md from './core/tasks-md';
 import { pruneGranted, rollover } from './core/ledger';
+import { rollRecurring } from './core/recurrence';
 import { dayKey } from './core/time';
 import { DEFAULT_STATE, type State, type Task } from './core/types';
 
@@ -207,14 +208,29 @@ export class Store {
 		return t;
 	}
 
-	async addTask(input: { title: string; min: number; diff: number; prio: number; due?: string }): Promise<string | null> {
+	/**
+	 * Открыть заново повторяющиеся задачи, которым пришёл срок, и отпустить
+	 * их записи о начислении — эпизод закрыт, следующий заработает сам.
+	 */
+	async rollRecurring(today: string = dayKey()): Promise<number> {
+		const changed = rollRecurring(this.tasks, today);
+		if (!changed.length) return 0;
+		for (const t of changed) delete this.state.granted[t.id];
+		await this.writeLines(changed);
+		this.save();
+		return changed.length;
+	}
+
+	async addTask(input: {
+		title: string; min: number; diff: number; prio: number; due?: string; repeat?: number;
+	}): Promise<string | null> {
 		const file = (await this.ensureFile());
 		if (!file) return null;
 		const t: md.ParsedTask = {
 			id: md.newId(),
 			title: input.title.replace(/[`\n]/g, ' ').trim(),
 			min: input.min, diff: input.diff, prio: input.prio,
-			done: false, due: input.due,
+			done: false, due: input.due, repeat: input.repeat,
 			indent: '', bullet: '-', extra: [], line: -1, adopted: false,
 		};
 		await this.edit((text) => md.insertTask(text, md.serializeTask(t)));

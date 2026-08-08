@@ -1,32 +1,82 @@
 /**
  * ASCII-рендерер. Не знает ни про Obsidian, ни про предметную область —
- * только про ширину в символах, сегменты и точки попадания.
+ * только про сегменты, точки попадания и метрики шрифта.
  *
- * Ключевое решение: строка — это не текст в одном <pre>, а массив сегментов.
- * Интерактивные сегменты становятся настоящими <button> и <input> с нулевым
- * паддингом. На вид — псевдографика, на деле — фокус, клавиатура и
- * скринридер работают сами собой.
+ * ── Почему выравнивание НЕ считает символы ────────────────────────────────
+ *
+ * Первая версия добивала строку пробелами до ровно N ячеек. Это работает
+ * ровно до тех пор, пока шрифт моноширинный. iA Writer Duo — не моноширинный:
+ * m, M, w, W в нём в полтора раза шире прочих, и строка съезжает настолько,
+ * сколько в ней таких букв. Подобрать глифы тут нельзя, потому что ломается
+ * не псевдографика, а сам способ выравнивания.
+ *
+ * Поэтому добивка пробелами убрана. Строка — flex-ряд: слева содержимое,
+ * справа колонка, между ними распорка `gap`, занимающая весь остаток.
+ * Горизонтальные линейки — сегмент `fill`: заведомо длинная строка из `─`,
+ * обрезанная по границе. Длинные названия режет CSS многоточием, а не наш
+ * счётчик символов.
+ *
+ * В итоге правая граница рамки стоит на месте при любом шрифте — моноширинном,
+ * дуоспейсном и даже пропорциональном. Счёт в ячейках остался только там, где
+ * он честен: длина полосок и порог компактной раскладки.
  */
 
-export type Seg =
-	| { t: 'text'; s: string; cls?: string }
-	| { t: 'hit'; s: string; act: string; cls?: string; label?: string }
-	| { t: 'input'; w: number; act: string; value: string; placeholder?: string };
+/* ── набор псевдографики ───────────────────────────────────────────────── */
 
-export const S = (s: string, cls?: string): Seg => ({ t: 'text', s, cls });
-export const H = (s: string, act: string, cls?: string, label?: string): Seg => ({
-	t: 'hit', s, act, cls, label,
-});
-export const IN = (w: number, act: string, value = '', placeholder?: string): Seg => ({
-	t: 'input', w, act, value, placeholder,
-});
+export interface Glyphs {
+	tl: string; tr: string; bl: string; br: string; ml: string; mr: string;
+	h: string; v: string;
+	full: string; empty: string;
+	dotOn: string; dotOff: string;
+	arrow: string; check: string; cross: string; bolt: string; warn: string;
+}
+
+export const GLYPH_SETS: Record<'unicode' | 'ascii', Glyphs> = {
+	unicode: {
+		tl: '┌', tr: '┐', bl: '└', br: '┘', ml: '├', mr: '┤',
+		h: '─', v: '│',
+		full: '█', empty: '░',
+		dotOn: '▪', dotOff: '▫',
+		arrow: '▸', check: '✓', cross: '╳', bolt: '⌁', warn: '▲',
+	},
+	// Запасной набор: рисуется любым шрифтом, ничего не подставляется из
+	// чужого семейства и потому ничего не разъезжается ни вширь, ни ввысь.
+	ascii: {
+		tl: '+', tr: '+', bl: '+', br: '+', ml: '+', mr: '+',
+		h: '-', v: '|',
+		full: '#', empty: '.',
+		dotOn: '*', dotOff: '.',
+		arrow: '>', check: 'v', cross: 'x', bolt: '*', warn: '^',
+	},
+};
+
+export type GlyphMode = 'auto' | 'unicode' | 'ascii';
+
+/* ── сегменты ──────────────────────────────────────────────────────────── */
+
+export type Seg =
+	| { t: 'text'; s: string; cls?: string; clip?: boolean }
+	| { t: 'hit'; s: string; act: string; cls?: string; label?: string; clip?: boolean }
+	| { t: 'input'; act: string; value: string; placeholder?: string }
+	| { t: 'gap' }
+	| { t: 'fill'; s: string; cls?: string };
 
 export type Line = Seg[];
 
-/* ── ширина в ячейках ──────────────────────────────────────────────────────
-   .length врёт: суррогатная пара считается за два, комбинирующий знак — за
-   один, а восточноазиатский глиф и эмодзи занимают две ячейки. Без честной
-   меры ширины сетка разъезжается на первом же нестандартном символе.        */
+export const S = (s: string, cls?: string): Seg => ({ t: 'text', s, cls });
+/** Текст, который разрешено обрезать многоточием, когда места не хватает. */
+export const CLIP = (s: string, cls?: string): Seg => ({ t: 'text', s, cls, clip: true });
+export const H = (s: string, act: string, cls?: string, label?: string): Seg =>
+	({ t: 'hit', s, act, cls, label });
+export const IN = (act: string, value = '', placeholder?: string): Seg =>
+	({ t: 'input', act, value, placeholder });
+export const GAP: Seg = { t: 'gap' };
+export const FILL = (s: string, cls?: string): Seg => ({ t: 'fill', s, cls });
+
+/* ── мера ширины в ячейках ─────────────────────────────────────────────────
+   Нужна только для полосок и порогов. .length соврал бы: суррогатная пара
+   считается за два, комбинирующий знак — за один, восточноазиатский глиф
+   занимает две ячейки.                                                     */
 
 const WIDE: Array<[number, number]> = [
 	[0x1100, 0x115f], [0x2329, 0x232a], [0x2e80, 0x303e], [0x3041, 0x33ff],
@@ -38,17 +88,14 @@ const WIDE: Array<[number, number]> = [
 const isWide = (cp: number) => WIDE.some(([a, b]) => cp >= a && cp <= b);
 const isZero = (cp: number) =>
 	(cp >= 0x0300 && cp <= 0x036f) || (cp >= 0x200b && cp <= 0x200f) || cp === 0xfe0f;
-
 const cellOf = (cp: number) => (isZero(cp) ? 0 : isWide(cp) ? 2 : 1);
 
-/** Ширина строки в ячейках терминальной сетки. */
 export function dw(s: string): number {
 	let w = 0;
 	for (const ch of s) w += cellOf(ch.codePointAt(0) as number);
 	return w;
 }
 
-/** Обрезать до ширины w, добавив многоточие. Режется хвост, не начало. */
 export function trunc(s: string, w: number): string {
 	if (w <= 0) return '';
 	if (dw(s) <= w) return s;
@@ -63,9 +110,7 @@ export function trunc(s: string, w: number): string {
 	return out + '…';
 }
 
-const sp = (n: number) => ' '.repeat(Math.max(0, n));
-
-/** Перенос по словам с честной мерой ширины. Пустая строка остаётся пустой. */
+/** Перенос по словам. Пустая строка остаётся пустой. */
 export function wrap(text: string, w: number): string[] {
 	if (w <= 0) return [''];
 	const out: string[] = [];
@@ -74,10 +119,7 @@ export function wrap(text: string, w: number): string[] {
 		let line = '';
 		for (const word of para.split(/\s+/)) {
 			if (!word) continue;
-			if (!line) {
-				line = dw(word) <= w ? word : trunc(word, w);
-				continue;
-			}
+			if (!line) { line = dw(word) <= w ? word : trunc(word, w); continue; }
 			if (dw(line) + 1 + dw(word) <= w) line += ' ' + word;
 			else { out.push(line); line = dw(word) <= w ? word : trunc(word, w); }
 		}
@@ -86,60 +128,52 @@ export function wrap(text: string, w: number): string[] {
 	return out.length ? out : [''];
 }
 
-const segW = (g: Seg) => (g.t === 'input' ? g.w : dw(g.s));
-export const lineW = (segs: Seg[]) => segs.reduce((n, g) => n + segW(g), 0);
+/** Ширина текстовой части строки в ячейках. Распорки и заполнители — ноль. */
+export const lineW = (segs: Seg[]) =>
+	segs.reduce((n, g) => n + (g.t === 'text' || g.t === 'hit' ? dw(g.s) : 0), 0);
 
-/** Срезать хвост набора сегментов на `over` ячеек. */
-function shrink(segs: Seg[], over: number): Seg[] {
-	const out = segs.slice();
-	let left = over;
-	for (let i = out.length - 1; i >= 0 && left > 0; i--) {
-		const g = out[i];
-		const w = segW(g);
-		if (g.t === 'input') { out.splice(i, 1); left -= w; continue; }
-		if (w <= left) { out.splice(i, 1); left -= w; continue; }
-		out[i] = { ...g, s: trunc(g.s, w - left) } as Seg;
-		left = 0;
-	}
-	return out;
-}
+/** Есть ли в строке распорка — без неё правая граница не встанет на место. */
+export const hasGap = (segs: Seg[]) => segs.some((g) => g.t === 'gap' || g.t === 'fill');
 
 /* ── рамка ─────────────────────────────────────────────────────────────── */
 
-export function top(title: string, cols: number): Line {
-	const fill = cols - 2 - dw(`─ ${title} `);
-	return [S(`┌─ ${title} ${'─'.repeat(Math.max(0, fill))}┐`, 'te-faint')];
-}
-export const sep = (cols: number): Line => [S(`├${'─'.repeat(Math.max(0, cols - 2))}┤`, 'te-faint')];
-export const bot = (cols: number): Line => [S(`└${'─'.repeat(Math.max(0, cols - 2))}┘`, 'te-faint')];
+const FILL_LEN = 240;
 
-/** Строка внутри рамки: `│ содержимое │`, добитая до ровного правого края. */
-export function row(segs: Seg[], cols: number): Line {
-	const inner = cols - 4;
-	let body = segs;
-	const used = lineW(body);
-	if (used > inner) body = shrink(body, used - inner);
-	const pad = inner - lineW(body);
-	return [S('│ ', 'te-faint'), ...body, S(sp(pad)), S(' │', 'te-faint')];
+export function top(title: string, g: Glyphs): Line {
+	return [
+		S(`${g.tl}${g.h} ${title} `, 'te-faint'),
+		FILL(g.h.repeat(FILL_LEN), 'te-faint'),
+		S(g.tr, 'te-faint'),
+	];
 }
+export const sep = (g: Glyphs): Line =>
+	[S(g.ml, 'te-faint'), FILL(g.h.repeat(FILL_LEN), 'te-faint'), S(g.mr, 'te-faint')];
+export const bot = (g: Glyphs): Line =>
+	[S(g.bl, 'te-faint'), FILL(g.h.repeat(FILL_LEN), 'te-faint'), S(g.br, 'te-faint')];
 
-/** Слева и справа, с добивкой пробелами посередине. */
-export function split(left: Seg[], right: Seg[], cols: number): Line {
-	const inner = cols - 4;
-	const rw = lineW(right);
-	const room = Math.max(0, inner - rw - 1);
-	let l = left;
-	if (lineW(l) > room) l = shrink(l, lineW(l) - room);
-	return row([...l, S(sp(inner - lineW(l) - rw)), ...right], cols);
+/**
+ * Строка внутри рамки. Распорка добавляется автоматически, если её нет:
+ * именно она, а не пробелы, держит правую границу на месте.
+ */
+export function row(segs: Seg[], g: Glyphs): Line {
+	const body = hasGap(segs) ? segs : [...segs, GAP];
+	return [S(`${g.v} `, 'te-faint'), ...body, S(` ${g.v}`, 'te-faint')];
 }
 
-export const bar = (v: number, max: number, w: number): string => {
+/** Слева и справа. Левая часть ужимается многоточием, правая стоит намертво. */
+export function split(left: Seg[], right: Seg[], g: Glyphs): Line {
+	const shrinkable = left.map((s) =>
+		s.t === 'text' || s.t === 'hit' ? ({ ...s, clip: true } as Seg) : s);
+	return row([...shrinkable, GAP, ...right], g);
+}
+
+export const bar = (v: number, max: number, w: number, g: Glyphs): string => {
 	const f = Math.round(Math.max(0, Math.min(1, max > 0 ? v / max : 0)) * w);
-	return '█'.repeat(f) + '░'.repeat(Math.max(0, w - f));
+	return g.full.repeat(f) + g.empty.repeat(Math.max(0, w - f));
 };
 
-export const dots = (v: number, max: number): string =>
-	'▪'.repeat(Math.max(0, Math.min(v, max))) + '▫'.repeat(Math.max(0, max - v));
+export const dots = (v: number, max: number, g: Glyphs): string =>
+	g.dotOn.repeat(Math.max(0, Math.min(v, max))) + g.dotOff.repeat(Math.max(0, max - v));
 
 /* ── отрисовка ─────────────────────────────────────────────────────────── */
 
@@ -161,10 +195,7 @@ function snapshot(host: HTMLElement): Snapshot | null {
 	const act = el.dataset?.act;
 	if (!act) return null;
 	if (el instanceof HTMLInputElement) {
-		return {
-			act, isInput: true, value: el.value,
-			sel: [el.selectionStart ?? 0, el.selectionEnd ?? 0],
-		};
+		return { act, isInput: true, value: el.value, sel: [el.selectionStart ?? 0, el.selectionEnd ?? 0] };
 	}
 	return { act, isInput: false };
 }
@@ -184,39 +215,58 @@ export function paint(host: HTMLElement, lines: Line[], h: PaintHandlers): HTMLE
 	for (const segs of lines) {
 		const ln = host.createDiv({ cls: 'te-ln' });
 		for (const g of segs) {
-			if (g.t === 'text') {
-				if (!g.s) continue;
-				ln.createSpan({ text: g.s, cls: g.cls });
-				continue;
-			}
-			if (g.t === 'hit') {
-				const b = ln.createEl('button', { text: g.s, cls: 'te-hit' + (g.cls ? ' ' + g.cls : '') });
-				b.type = 'button';
-				b.dataset.act = g.act;
-				b.tabIndex = -1;
-				if (g.label) b.setAttribute('aria-label', g.label);
-				b.addEventListener('click', () => h.onAct(g.act));
-				hits.push(b);
-				if (keep && keep.act === g.act && !keep.isInput) restore = b;
-				continue;
-			}
-			const inp = ln.createEl('input', { cls: 'te-in' });
-			inp.type = 'text';
-			inp.dataset.act = g.act;
-			inp.tabIndex = -1;
-			inp.value = g.value;
-			if (g.placeholder) inp.placeholder = g.placeholder;
-			inp.style.width = `${g.w}ch`;
-			inp.addEventListener('keydown', (e: KeyboardEvent) => {
-				if (e.key !== 'Enter') return;
-				e.preventDefault();
-				const v = inp.value.trim();
-				if (v) { inp.value = ''; h.onSubmit(g.act, v); }
-			});
-			hits.push(inp);
-			if (keep && keep.act === g.act && keep.isInput) {
-				inp.value = keep.value ?? '';
-				restore = inp;
+			switch (g.t) {
+				case 'gap':
+					ln.createSpan({ cls: 'te-gap' });
+					break;
+
+				case 'fill': {
+					const f = ln.createSpan({ text: g.s, cls: 'te-fill' + (g.cls ? ' ' + g.cls : '') });
+					f.setAttribute('aria-hidden', 'true');
+					break;
+				}
+
+				case 'text': {
+					if (!g.s) break;
+					ln.createSpan({ text: g.s, cls: (g.cls ?? '') + (g.clip ? ' te-clip' : '') });
+					break;
+				}
+
+				case 'hit': {
+					const b = ln.createEl('button', {
+						text: g.s,
+						cls: 'te-hit' + (g.cls ? ' ' + g.cls : '') + (g.clip ? ' te-clip' : ''),
+					});
+					b.type = 'button';
+					b.dataset.act = g.act;
+					b.tabIndex = -1;
+					if (g.label) b.setAttribute('aria-label', g.label);
+					b.addEventListener('click', () => h.onAct(g.act));
+					hits.push(b);
+					if (keep && keep.act === g.act && !keep.isInput) restore = b;
+					break;
+				}
+
+				case 'input': {
+					const inp = ln.createEl('input', { cls: 'te-in' });
+					inp.type = 'text';
+					inp.dataset.act = g.act;
+					inp.tabIndex = -1;
+					inp.value = g.value;
+					if (g.placeholder) inp.placeholder = g.placeholder;
+					inp.addEventListener('keydown', (e: KeyboardEvent) => {
+						if (e.key !== 'Enter') return;
+						e.preventDefault();
+						const v = inp.value.trim();
+						if (v) { inp.value = ''; h.onSubmit(g.act, v); }
+					});
+					hits.push(inp);
+					if (keep && keep.act === g.act && keep.isInput) {
+						inp.value = keep.value ?? '';
+						restore = inp;
+					}
+					break;
+				}
 			}
 		}
 	}
@@ -231,7 +281,7 @@ export function paint(host: HTMLElement, lines: Line[], h: PaintHandlers): HTMLE
 	return hits;
 }
 
-/** Стрелки водят по точкам попадания. Внутри поля ввода они отданы каретке. */
+/** Стрелки водят по точкам попадания. Внутри поля ввода отданы каретке. */
 export function wireKeyboard(host: HTMLElement, getHits: () => HTMLElement[]): (e: KeyboardEvent) => void {
 	return (e: KeyboardEvent) => {
 		const el = host.ownerDocument.activeElement as HTMLElement | null;
@@ -252,37 +302,121 @@ export function wireKeyboard(host: HTMLElement, getHits: () => HTMLElement[]): (
 	};
 }
 
-/* ── метрики сетки ─────────────────────────────────────────────────────── */
+/* ── метрики шрифта ────────────────────────────────────────────────────── */
 
-/** Ширина одного символа в пикселях. Меряется по сотне нулей. */
-export function charWidth(host: HTMLElement): number {
-	const probe = host.createSpan({ text: '0'.repeat(100) });
-	probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre';
-	const w = probe.getBoundingClientRect().width / 100;
-	probe.remove();
-	return w > 0 ? w : 8;
+export type FontKind = 'mono' | 'duo' | 'proportional';
+
+export interface FontProfile {
+	/** Ширина «0» в пикселях — ячейка сетки. */
+	cell: number;
+	/** Средняя ширина буквы русской прозы: по ней считается перенос строк. */
+	prose: number;
+	kind: FontKind;
+	/** Символы шире ячейки более чем на 2 %. */
+	wide: string[];
+	/** Псевдографика этого шрифта держит ширину ячейки. */
+	gridSafe: boolean;
 }
 
-export function colsFor(host: HTMLElement, cw: number, lo = 32, hi = 110): number {
-	const avail = host.getBoundingClientRect().width;
-	if (!avail || !cw) return lo;
-	return Math.max(lo, Math.min(hi, Math.floor(avail / cw)));
+/** Проба ширины: строку меряем двадцатикратно, чтобы сгладить округление. */
+export function makeMeasurer(host: HTMLElement): { of: (s: string) => number; dispose: () => void } {
+	const probe = host.createSpan();
+	probe.style.cssText =
+		'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:pre;pointer-events:none';
+	return {
+		of: (s: string) => {
+			if (!s) return 0;
+			probe.textContent = s.repeat(20);
+			return probe.getBoundingClientRect().width / 20;
+		},
+		dispose: () => probe.remove(),
+	};
 }
 
-/** Символы, на которых держится сетка. Если шрифт рисует их не в одну ячейку — всё поедет. */
-export const GRID_GLYPHS = ['─', '│', '┌', '┐', '└', '┘', '├', '┤', '█', '░', '▪', '▫', '▸', '✓', '…'];
+/** Буквы, которым дуоспейсные шрифты дают полуторную ширину. */
+const LATIN_WIDE = ['m', 'M', 'w', 'W'];
+/** Их кириллические родственники — какие именно расширены, у шрифтов расходится. */
+const CYRILLIC_WIDE = ['м', 'ш', 'щ', 'ж', 'ы', 'М', 'Ш', 'Щ', 'Ж'];
+const NARROW = ['i', 'l', '.', 'j'];
+export const PROSE_SAMPLE = 'обычныйтекстзадачидляоценкисреднейшириныбуквы';
 
-/** Вернуть глифы, ширина которых расходится с шириной «0» больше чем на 2 %. */
-export function auditGlyphs(host: HTMLElement): string[] {
-	const base = charWidth(host);
-	if (!base) return [];
-	const bad: string[] = [];
-	for (const g of GRID_GLYPHS) {
-		const probe = host.createSpan({ text: g.repeat(40) });
-		probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre';
-		const w = probe.getBoundingClientRect().width / 40;
-		probe.remove();
-		if (base > 0 && Math.abs(w / base - 1) > 0.02) bad.push(g);
+const near = (a: number, b: number, tol = 0.02) => Math.abs(a / b - 1) <= tol;
+
+/**
+ * Классификация по замерам. Отделена от DOM, чтобы проверяться тестами на
+ * выдуманных метриках — в том числе на метриках iA Writer Duo.
+ */
+export function classify(w: Record<string, number>): { kind: FontKind; wide: string[] } {
+	const cell = w['0'];
+	if (!cell) return { kind: 'proportional', wide: [] };
+
+	const wide: string[] = [];
+	let narrowFound = false;
+
+	for (const [ch, px] of Object.entries(w)) {
+		if (ch === '0') continue;
+		if (px > cell * 1.02) wide.push(ch);
+		else if (px < cell * 0.98) narrowFound = true;
 	}
-	return bad;
+
+	if (!wide.length && !narrowFound) return { kind: 'mono', wide: [] };
+	if (narrowFound) return { kind: 'proportional', wide };
+
+	// дуоспейс: всё расширенное расширено ровно в полтора раза, узкого нет
+	const allOneAndHalf = wide.every((ch) => near(w[ch], cell * 1.5, 0.06));
+	return { kind: allOneAndHalf ? 'duo' : 'proportional', wide };
+}
+
+export function probeFont(host: HTMLElement, glyphs: Glyphs): FontProfile {
+	const m = makeMeasurer(host);
+	try {
+		const sample: Record<string, number> = { '0': m.of('0') };
+		for (const ch of [...LATIN_WIDE, ...CYRILLIC_WIDE, ...NARROW]) sample[ch] = m.of(ch);
+
+		const { kind, wide } = classify(sample);
+		const cell = sample['0'] || 8;
+		const prose = m.of(PROSE_SAMPLE) || cell;
+
+		// Псевдографику проверяем на согласованность с ячейкой: если шрифт её
+		// не содержит, подставится другое семейство — и поедет и вширь, и ввысь.
+		const frame = [glyphs.h, glyphs.v, glyphs.tl, glyphs.full, glyphs.empty];
+		const gridSafe = frame.every((ch) => near(m.of(ch), cell, 0.03));
+
+		return { cell, prose, kind, wide, gridSafe };
+	} finally {
+		m.dispose();
+	}
+}
+
+/** Сколько ячеек влезает по ширине — для полосок и порога компактности. */
+export function colsFor(host: HTMLElement, cell: number, lo = 28, hi = 120): number {
+	const avail = host.getBoundingClientRect().width;
+	if (!avail || !cell) return lo;
+	return Math.max(lo, Math.min(hi, Math.floor(avail / cell)));
+}
+
+/**
+ * Сколько букв прозы влезает в строку — для переноса текста в чате.
+ * У дуоспейсных шрифтов это заметно меньше, чем ячеек: буквы в среднем шире.
+ */
+export function textColsFor(host: HTMLElement, prose: number, lo = 18): number {
+	const avail = host.getBoundingClientRect().width;
+	if (!avail || !prose) return lo;
+	return Math.max(lo, Math.floor((avail * 0.92) / prose));
+}
+
+export function pickGlyphs(mode: GlyphMode, gridSafe: boolean): Glyphs {
+	if (mode === 'unicode') return GLYPH_SETS.unicode;
+	if (mode === 'ascii') return GLYPH_SETS.ascii;
+	return gridSafe ? GLYPH_SETS.unicode : GLYPH_SETS.ascii;
+}
+
+/** Человеческое описание профиля — для настроек. */
+export function describeFont(p: FontProfile): string {
+	const kind =
+		p.kind === 'mono' ? 'моноширинный' :
+		p.kind === 'duo' ? 'дуоспейсный' : 'пропорциональный';
+	const wide = p.wide.length ? `, шире ячейки: ${p.wide.join(' ')}` : '';
+	const frame = p.gridSafe ? 'псевдографика своя' : 'псевдографика подставная — включён ASCII';
+	return `${kind}, ячейка ${p.cell.toFixed(1)} px${wide}. ${frame}.`;
 }

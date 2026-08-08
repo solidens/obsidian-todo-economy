@@ -6,6 +6,7 @@
  */
 
 import { defaultWeeklyCap, sane } from './economy';
+import { saneRepeat } from './recurrence';
 import { newId } from './tasks-md';
 import type { Profile, Reward, RewardKind } from './types';
 
@@ -40,6 +41,8 @@ export interface TaskDraft {
 	diff: number;
 	prio: number;
 	due?: string;
+	/** Повтор раз в N дней. */
+	repeat?: number;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -55,6 +58,7 @@ export function toTask(raw: unknown): TaskDraft | null {
 		diff: sane.diff(numOf(o.diff ?? o.difficulty, 1)),
 		prio: sane.prio(numOf(o.prio ?? o.priority, 1)),
 		due: DATE_RE.test(due) ? due : undefined,
+		repeat: saneRepeat(o.repeat ?? o.repeatDays ?? o.every ?? o.everyDays),
 	};
 }
 

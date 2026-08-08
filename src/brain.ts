@@ -11,6 +11,7 @@ import {
 	estimateMonthlyIncome, price, solveK, suggestDayCap, suggestSoftCap,
 } from './core/economy';
 import { toRewards, toRoutine, toTask, toWorkdays } from './core/intake';
+import { describeRepeat } from './core/recurrence';
 import { extractJson, isValidKey } from './llm/parse';
 import { ask, type Msg } from './llm/chat';
 import type { OnboardStep } from './core/types';
@@ -29,7 +30,7 @@ const PROMPTS: Record<string, string> = {
 
 	harmful: `Человек описал, на что залипает и потом жалеет. Разбери в список. value — насколько это его тянет, от 0.2 до 5.0. harm — насколько разрушительно, от 1.0 до 3.0. freq — сколько раз в месяц это случается сейчас. weeklyCap — разумный жёсткий лимит раз в неделю. ${JSON_ONLY} Формат: {"rewards":[{"title":"...","value":1.5,"harm":2.4,"freq":12,"weeklyCap":2}]}`,
 
-	intake: `Разбери фразу человека. Если это дело — верни задачу, если это то, чем он себя награждает — награду, иначе none. ${SCALES} due — срок в формате YYYY-MM-DD, только если он явно назван. ${JSON_ONLY} Форматы: {"kind":"task","title":"...","min":90,"diff":1.2,"prio":1.4,"due":"2026-08-08"} или {"kind":"reward","title":"...","value":2.0,"freq":8,"kind2":"normal"} или {"kind":"none"}`,
+	intake: `Разбери фразу человека. Если это дело — верни задачу, если это то, чем он себя награждает — награду, иначе none. ${SCALES} due — срок в формате YYYY-MM-DD, только если он явно назван. repeat — раз в сколько дней дело повторяется: 1 для «каждый день» и «ежедневно», 2 для «через день», 7 для «раз в неделю». Ставь repeat только если человек прямо сказал, что дело регулярное. ${JSON_ONLY} Форматы: {"kind":"task","title":"...","min":90,"diff":1.2,"prio":1.4,"due":"2026-08-08","repeat":1} или {"kind":"reward","title":"...","value":2.0,"freq":8,"kind2":"normal"} или {"kind":"none"}`,
 };
 
 const QUESTIONS: Record<OnboardStep, string> = {
@@ -260,8 +261,9 @@ export class Brain {
 			const id = await this.store.addTask(t);
 			if (!id) return;
 			const due = t.due ? `, срок ${t.due}` : '';
+			const rep = t.repeat ? `, ${describeRepeat(t.repeat)}` : '';
 			this.say('assistant',
-				`Завёл: ${t.title}\n  ${t.min} мин · сложн ${t.diff} · прио ${t.prio}${due}`);
+				`Завёл: ${t.title}\n  ${t.min} мин · сложн ${t.diff} · прио ${t.prio}${due}${rep}`);
 			return;
 		}
 

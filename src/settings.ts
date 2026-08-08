@@ -2,14 +2,40 @@ import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import { price, solveK, suggestDayCap, suggestSoftCap, estimateMonthlyIncome } from './core/economy';
 import { isValidKey } from './llm/parse';
 import { resetModelCache } from './llm/models';
+import { describeFont, GLYPH_SETS, probeFont } from './ui/ascii';
+import type { State } from './core/types';
 import type TodoEconomyPlugin from './main';
 
 export class EconomySettingsTab extends PluginSettingTab {
 	private plugin: TodoEconomyPlugin;
+	private fontNote: HTMLElement | null = null;
 
 	constructor(app: App, plugin: TodoEconomyPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
+	}
+
+	/**
+	 * Обмерить выбранный шрифт прямо здесь и сказать, что получилось.
+	 * Проба своя, а не из панели: настройки открываются и без открытой панели.
+	 */
+	private refreshFontNote(): void {
+		const el = this.fontNote;
+		if (!el) return;
+		const s = this.plugin.store.state;
+		const probe = el.createDiv();
+		probe.style.cssText = 'position:absolute;left:-9999px;visibility:hidden';
+		probe.style.fontFamily = s.panelFont.trim()
+			? `${s.panelFont.trim()}, var(--font-monospace)`
+			: 'var(--font-monospace)';
+		let text: string;
+		try {
+			text = describeFont(probeFont(probe, GLYPH_SETS.unicode));
+		} catch {
+			text = 'Не удалось обмерить шрифт.';
+		}
+		probe.remove();
+		el.setText(text);
 	}
 
 	display(): void {
@@ -63,6 +89,47 @@ export class EconomySettingsTab extends PluginSettingTab {
 					s.strictRestore = v;
 					store.save();
 				}),
+			);
+
+		containerEl.createEl('h3', { text: 'Панель' });
+
+		new Setting(containerEl)
+			.setName('Шрифт панели')
+			.setDesc(
+				'Пусто — брать моноширинный шрифт из настроек Obsidian. Выравнивание держится ' +
+				'на разметке, а не на подсчёте символов, поэтому годится и дуоспейсный шрифт: ' +
+				'iA Writer Duo S, где m и w в полтора раза шире прочих, рисуется ровно.',
+			)
+			.addText((t) =>
+				t.setPlaceholder('iA Writer Mono S')
+					.setValue(s.panelFont)
+					.onChange((v) => {
+						s.panelFont = v.trim();
+						store.save();
+						this.plugin.refitViews();
+						this.refreshFontNote();
+					}),
+			);
+
+		this.fontNote = containerEl.createDiv({ cls: 'te-font-note' });
+		this.refreshFontNote();
+
+		new Setting(containerEl)
+			.setName('Псевдографика')
+			.setDesc(
+				'Авто проверяет, держит ли шрифт ширину ячейки на ─ │ █ ░. Если этих символов ' +
+				'в нём нет, они подставляются из чужого семейства и разъезжаются — тогда панель ' +
+				'сама переходит на ASCII. Видишь пустые квадраты — поставь ASCII вручную.',
+			)
+			.addDropdown((d) =>
+				d.addOptions({ auto: 'авто', unicode: 'юникод', ascii: 'ASCII' })
+					.setValue(s.glyphMode)
+					.onChange((v) => {
+						s.glyphMode = v as State['glyphMode'];
+						store.save();
+						this.plugin.refitViews();
+						this.refreshFontNote();
+					}),
 			);
 
 		containerEl.createEl('h3', { text: 'Экономика' });

@@ -27,4 +27,10 @@ export function daysBetween(a: string, b: string): number {
 	return Math.round((db - da) / 864e5);
 }
 
+/** Сдвинуть ключ YYYY-MM-DD на N дней. Переходы месяцев и лет — на Date. */
+export function addDays(key: string, n: number): string {
+	const [y, m, d] = key.split('-').map(Number);
+	return dayKey(new Date(y, m - 1, d + n));
+}
+
 export const mmss = (sec: number) => `${p2(Math.floor(sec / 60))}:${p2(sec % 60)}`;

@@ -1,29 +1,61 @@
 /* Todo Economy — ASCII-панель.
-   Цвета берутся из темы Obsidian: плагин не навязывает свою палитру. */
+   Цвета берутся из темы Obsidian: плагин не навязывает свою палитру.
+
+   Выравнивание держится на flex, а не на подсчёте символов, — иначе
+   дуоспейсные шрифты вроде iA Writer Duo разъезжались бы на каждой букве m. */
 
 .te-root {
   padding: 8px 10px;
-  overflow-x: auto;
+  overflow-x: hidden;
 }
 
 .te-grid {
   font-family: var(--font-monospace);
   font-size: var(--font-ui-small);
-  line-height: 1.55;
+  line-height: 1.35;
   color: var(--text-normal);
-  white-space: pre;
-  /* лигатуры склеивают -- и => в один глиф и ломают сетку */
+  /* лигатуры склеивают -- и => в один глиф и рвут рамку */
   font-variant-ligatures: none;
   font-feature-settings: "liga" 0, "calt" 0;
+  font-kerning: none;
   -webkit-font-smoothing: antialiased;
 }
 
 .te-ln {
-  min-height: 1.55em;
+  display: flex;
+  align-items: baseline;
+  min-height: 1.35em;
+  white-space: pre;
+}
+
+.te-ln > span,
+.te-ln > button {
+  flex: 0 0 auto;
+}
+
+/* Распорка: занимает весь остаток и прижимает правую границу к краю. */
+.te-gap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Линейка: заведомо длинная строка из ─, обрезанная по границе панели. */
+.te-fill {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Что можно ужать: длинные названия режет CSS, а не наш счётчик символов. */
+.te-clip {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Точка попадания: на вид ASCII, на деле кнопка.
-   Нулевые паддинги и границы — иначе поедет сетка. */
+   Нулевые паддинги и границы — иначе сдвинется соседний текст. */
 .te-hit,
 .te-in {
   font: inherit;
@@ -56,6 +88,9 @@
 }
 
 .te-in {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
   caret-color: var(--interactive-accent);
 }
 
@@ -83,4 +118,11 @@
   gap: 10px;
   align-items: baseline;
   justify-content: space-between;
+}
+
+.te-font-note {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  margin: -6px 0 12px;
+  font-family: var(--font-monospace);
 }

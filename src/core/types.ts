@@ -20,6 +20,12 @@ export interface Task {
 	doneOn?: string;
 	/** Срок, YYYY-MM-DD. */
 	due?: string;
+	/**
+	 * Повтор раз в N дней: 1 — ежедневная, 2 — через день, 7 — раз в неделю.
+	 * Закрытая повторяющаяся задача остаётся закрытой до конца суток и
+	 * открывается заново на смене дня — чтобы сегодняшнее «сделано» было видно.
+	 */
+	repeat?: number;
 	/** Отступ строки в файле — чтобы сохранять вложенность списков. */
 	indent: string;
 	/** Токены, которых плагин не знает: переживают запись без потерь. */
@@ -105,6 +111,10 @@ export interface State {
 	/** Строгий режим: восстановительное тоже требует закрытой задачи. */
 	strictRestore: boolean;
 	lastModel: string | null;
+	/** Пустая строка — брать моноширинный шрифт из настроек Obsidian. */
+	panelFont: string;
+	/** Псевдографика: авто выбирает по замерам шрифта. */
+	glyphMode: 'auto' | 'unicode' | 'ascii';
 }
 
 export const DEFAULT_STATE: State = {
@@ -125,4 +135,6 @@ export const DEFAULT_STATE: State = {
 	profile: null,
 	strictRestore: false,
 	lastModel: null,
+	panelFont: '',
+	glyphMode: 'auto',
 };

@@ -57,6 +57,13 @@ export interface EconomyConst {
 	dayCap: number;
 	/** Порог, выше которого излишек начинает сгорать. */
 	softCap: number;
+	/**
+	 * Ручная поправка к решённой цене, 0.5…2.0. Нужна, когда человек говорит
+	 * «дорого» или «слишком легко», а истории ещё мало, чтобы пересчитать
+	 * приход по факту. Хранится отдельно от k, чтобы всегда было видно,
+	 * насколько далеко от решения систему увели руками.
+	 */
+	tune: number;
 }
 
 export type LedgerKind = 'earn' | 'undo' | 'spend' | 'penalty' | 'decay';
@@ -122,7 +129,7 @@ export const DEFAULT_STATE: State = {
 	onboarded: false,
 	onboardStep: 'key',
 	tasksFile: 'ТУДУ.md',
-	economy: { k: 0, monthlyIncome: 0, dayCap: 200, softCap: 900 },
+	economy: { k: 0, monthlyIncome: 0, dayCap: 200, softCap: 900, tune: 1 },
 	rewards: [],
 	balance: 0,
 	granted: {},

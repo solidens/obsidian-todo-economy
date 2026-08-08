@@ -1,5 +1,9 @@
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
-import { price, solveK, suggestDayCap, suggestSoftCap, estimateMonthlyIncome } from './core/economy';
+import {
+	effectiveK, estimateMonthlyIncome, incomeFromHistory, MIN_SPAN_DAYS,
+	price, solveK, suggestDayCap, suggestSoftCap,
+} from './core/economy';
+import { rebalance } from './core/rebalance';
 import { isValidKey } from './llm/parse';
 import { resetModelCache } from './llm/models';
 import { describeFont, GLYPH_SETS, probeFont } from './ui/ascii';
@@ -159,13 +163,33 @@ export class EconomySettingsTab extends PluginSettingTab {
 				}),
 			);
 
+		const fact = incomeFromHistory(s.history);
+
 		new Setting(containerEl)
-			.setName('Пересчитать цены')
-			.setDesc('Заново решить k по накопленному профилю и текущему списку наград.')
+			.setName('Пересчитать по факту')
+			.setDesc(
+				fact
+					? `За ${fact.spanDays} дн. ты зарабатываешь ${fact.monthly}/мес, а система считает по ` +
+						`${s.economy.monthlyIncome}/мес из онбординга. Пересчёт заново решит k по фактическому ` +
+						'приходу и уберёт ручную поправку.'
+					: `Нужно хотя бы ${MIN_SPAN_DAYS} дней закрытых задач. Пока данных мало — можно пересчитать ` +
+						'по оценке из онбординга.',
+			)
 			.addButton((b) =>
-				b.setButtonText('Пересчитать').onClick(() => {
-					if (!s.profile || !s.rewards.length) {
-						new Notice('Нечего пересчитывать: нет профиля или наград.');
+				b.setButtonText(fact ? 'По факту' : 'По оценке').onClick(() => {
+					if (!s.rewards.length) {
+						new Notice('Нечего пересчитывать: нет наград.');
+						return;
+					}
+					if (fact) {
+						const r = rebalance(s, 'solve');
+						store.save();
+						this.display();
+						new Notice(r.applied ? `Приход ≈ ${s.economy.monthlyIncome}/мес по факту.` : r.report);
+						return;
+					}
+					if (!s.profile) {
+						new Notice('Нечего пересчитывать: нет профиля.');
 						return;
 					}
 					const income = estimateMonthlyIncome(s.profile);
@@ -174,6 +198,7 @@ export class EconomySettingsTab extends PluginSettingTab {
 						k: solveK(income, s.rewards),
 						dayCap: suggestDayCap(income, s.profile.workdays),
 						softCap: suggestSoftCap(income),
+						tune: 1,
 					};
 					store.save();
 					this.display();
@@ -181,13 +206,30 @@ export class EconomySettingsTab extends PluginSettingTab {
 				}),
 			);
 
+		if (s.economy.tune !== 1) {
+			new Setting(containerEl)
+				.setName('Ручная поправка к ценам')
+				.setDesc(
+					`Сейчас ×${s.economy.tune}. Она появляется, когда просишь в чате сделать дешевле или ` +
+					'дороже. Пока поправка не равна единице, цены не решены, а подкручены — пересчёт по ' +
+					'факту вернёт их к честным.',
+				)
+				.addButton((b) =>
+					b.setButtonText('Убрать').onClick(() => {
+						s.economy.tune = 1;
+						store.save();
+						this.display();
+					}),
+				);
+		}
+
 		if (s.rewards.length) {
 			const list = containerEl.createEl('ul', { cls: 'te-settings-list' });
-			for (const r of s.rewards.slice().sort((a, b) => price(a, s.economy.k) - price(b, s.economy.k))) {
+			for (const r of s.rewards.slice().sort((a, b) => price(a, effectiveK(s.economy)) - price(b, effectiveK(s.economy)))) {
 				const tag = r.kind === 'harmful' ? ' · вредное' : r.kind === 'restore' ? ' · восстановление' : '';
 				const cap = r.weeklyCap ? `, ≤${r.weeklyCap}/нед` : '';
 				const li = list.createEl('li');
-				li.createSpan({ text: `${price(r, s.economy.k)}  ${r.title}${tag}${cap}` });
+				li.createSpan({ text: `${price(r, effectiveK(s.economy))}  ${r.title}${tag}${cap}` });
 				li.createEl('button', { text: 'убрать' }).addEventListener('click', () => {
 					s.rewards = s.rewards.filter((x) => x.id !== r.id);
 					store.save();

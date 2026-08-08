@@ -8,10 +8,15 @@
  */
 
 import {
-	estimateMonthlyIncome, price, solveK, suggestDayCap, suggestSoftCap,
+	award, effectiveK, estimateMonthlyIncome, price, sane, solveK,
+	suggestDayCap, suggestSoftCap,
 } from './core/economy';
+import { rebalance, findTask, type Complaint } from './core/rebalance';
+import { saneRepeat } from './core/recurrence';
+import type { Task } from './core/types';
 import { toRewards, toRoutine, toTask, toWorkdays } from './core/intake';
 import { describeRepeat } from './core/recurrence';
+
 import { extractJson, isValidKey } from './llm/parse';
 import { ask, type Msg } from './llm/chat';
 import type { OnboardStep } from './core/types';
@@ -30,7 +35,19 @@ const PROMPTS: Record<string, string> = {
 
 	harmful: `Человек описал, на что залипает и потом жалеет. Разбери в список. value — насколько это его тянет, от 0.2 до 5.0. harm — насколько разрушительно, от 1.0 до 3.0. freq — сколько раз в месяц это случается сейчас. weeklyCap — разумный жёсткий лимит раз в неделю. ${JSON_ONLY} Формат: {"rewards":[{"title":"...","value":1.5,"harm":2.4,"freq":12,"weeklyCap":2}]}`,
 
-	intake: `Разбери фразу человека. Если это дело — верни задачу, если это то, чем он себя награждает — награду, иначе none. ${SCALES} due — срок в формате YYYY-MM-DD, только если он явно назван. repeat — раз в сколько дней дело повторяется: 1 для «каждый день» и «ежедневно», 2 для «через день», 7 для «раз в неделю». Ставь repeat только если человек прямо сказал, что дело регулярное. ${JSON_ONLY} Форматы: {"kind":"task","title":"...","min":90,"diff":1.2,"prio":1.4,"due":"2026-08-08","repeat":1} или {"kind":"reward","title":"...","value":2.0,"freq":8,"kind2":"normal"} или {"kind":"none"}`,
+	intake: `Разбери фразу человека. Отдельно следи за жалобами на несправедливость оценки — их два разных сорта, и путать их нельзя.
+
+Несправедлива оценка ОДНОЙ задачи («отчёт вовсе не на полтора часа, а на три», «зарядка идёт тяжелее, чем записано», «это дело важнее») — верни adjust и только те поля, которые меняются:
+{"kind":"adjust","target":"часть названия задачи","min":180,"diff":1.6,"prio":1.8}
+
+Несправедлива ВСЯ система — верни rebalance:
+{"kind":"rebalance","want":"cheaper"} — «награды слишком дорогие», «до них не добраться», «ничего не могу себе позволить»
+{"kind":"rebalance","want":"pricier"} — «слишком легко покупается», «баллы девать некуда», «награды ничего не стоят»
+{"kind":"rebalance","want":"solve"} — «пересчитай по факту», «в онбординге я наврал», «система в целом кривая», «это несправедливо» без указания стороны
+
+Если жалоба общая и непонятно, в какую сторону — бери "solve": честнее пересчитать приход по фактическим начислениям, чем подкручивать цены наугад.
+
+Дальше — обычный разбор. Если это дело — верни задачу, если это то, чем он себя награждает — награду, иначе none. ${SCALES} due — срок в формате YYYY-MM-DD, только если он явно назван. repeat — раз в сколько дней дело повторяется: 1 для «каждый день» и «ежедневно», 2 для «через день», 7 для «раз в неделю». Ставь repeat только если человек прямо сказал, что дело регулярное. ${JSON_ONLY} Форматы: {"kind":"task","title":"...","min":90,"diff":1.2,"prio":1.4,"due":"2026-08-08","repeat":1} или {"kind":"reward","title":"...","value":2.0,"freq":8,"kind2":"normal"} или {"kind":"none"}`,
 };
 
 const QUESTIONS: Record<OnboardStep, string> = {
@@ -229,15 +246,16 @@ export class Brain {
 			k: solveK(income, s.rewards),
 			dayCap: suggestDayCap(income, profile.workdays),
 			softCap: suggestSoftCap(income),
+			tune: 1,
 		};
 
 		const lines = s.rewards
 			.slice()
-			.sort((a, b) => price(a, s.economy.k) - price(b, s.economy.k))
+			.sort((a, b) => price(a, effectiveK(s.economy)) - price(b, effectiveK(s.economy)))
 			.map((r) => {
 				const tag = r.kind === 'harmful' ? ' · вредное' : r.kind === 'restore' ? ' · восстановление' : '';
 				const cap = r.weeklyCap ? `, не чаще ${r.weeklyCap} раз в неделю` : '';
-				return `  ${price(r, s.economy.k)}  ${r.title}${tag}${cap}`;
+				return `  ${price(r, effectiveK(s.economy))}  ${r.title}${tag}${cap}`;
 			});
 
 		s.onboardStep = 'confirm';
@@ -267,6 +285,21 @@ export class Brain {
 			return;
 		}
 
+		if (kind === 'adjust') {
+			await this.adjustTask(j);
+			return;
+		}
+
+		if (kind === 'rebalance') {
+			const want = String(j.want ?? j.direction ?? 'solve').toLowerCase();
+			const which: Complaint =
+				want.startsWith('cheap') ? 'cheaper' : want.startsWith('pric') ? 'pricier' : 'solve';
+			const r = rebalance(this.store.state, which);
+			this.say('assistant', r.report);
+			if (r.applied) this.store.save();
+			return;
+		}
+
 		if (kind === 'reward') {
 			const [r] = toRewards([{ ...j, kind: j.kind2 ?? 'normal' }], 'normal', this.store.state.rewards);
 			if (!r) {
@@ -274,10 +307,46 @@ export class Brain {
 				return;
 			}
 			this.store.state.rewards.push(r);
-			this.say('assistant', `Завёл награду: ${r.title} — ${price(r, this.store.state.economy.k)} баллов`);
+			this.say('assistant',
+				`Завёл награду: ${r.title} — ${price(r, effectiveK(this.store.state.economy))} баллов`);
 			return;
 		}
 
 		this.say('assistant', 'Это не похоже ни на задачу, ни на награду. Скажи, что нужно сделать или чем себя наградить.');
+	}
+
+	/**
+	 * Правка оценки одной задачи. Меняются только названные поля — молчаливо
+	 * переписать остальные значениями по умолчанию было бы хуже, чем ничего.
+	 */
+	private async adjustTask(j: Record<string, unknown>): Promise<void> {
+		const target = String(j.target ?? j.title ?? '').trim();
+		const t = findTask(this.store.tasks, target);
+		if (!t) {
+			this.say('system',
+				target
+					? `Не нашёл задачу «${target}» — или под это подходит сразу несколько. Назови точнее.`
+					: 'Не понял, какую задачу поправить.');
+			return;
+		}
+
+		const patch: Partial<Task> = {};
+		if (j.min !== undefined) patch.min = sane.min(Number(j.min));
+		if (j.diff !== undefined) patch.diff = sane.diff(Number(j.diff));
+		if (j.prio !== undefined) patch.prio = sane.prio(Number(j.prio));
+		if (j.repeat !== undefined) patch.repeat = saneRepeat(j.repeat);
+
+		if (!Object.keys(patch).length) {
+			this.say('system', 'Понял, что оценка не нравится, но не понял, что именно поменять: минуты, сложность или важность?');
+			return;
+		}
+
+		const was = award(t);
+		const next = await this.store.patchTask(t.id, patch);
+		if (!next) return;
+
+		this.say('assistant',
+			`Поправил «${next.title}»: ${next.min} мин · сложн ${next.diff} · прио ${next.prio}\n` +
+			`  начисление ${was} → ${award(next)}`);
 	}
 }

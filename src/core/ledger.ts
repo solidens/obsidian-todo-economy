@@ -4,7 +4,7 @@
  * store.ts. Так вся арифметика проверяется тестами без Obsidian.
  */
 
-import { award, decayAmount, penaltyFor, price, streakMult } from './economy';
+import { award, decayAmount, effectiveK, penaltyFor, price, streakMult } from './economy';
 import { dayKey, daysBetween, weekKey } from './time';
 import type { LedgerKind, Reward, State, Task } from './types';
 
@@ -109,7 +109,7 @@ export interface BuyCheck {
  * именно потому, что вымотан, и запрет отдохнуть в этот момент добивает.
  */
 export function checkBuy(s: State, r: Reward, doneToday: boolean): BuyCheck {
-	const p = price(r, s.economy.k);
+	const p = price(r, effectiveK(s.economy));
 	const needsWork = r.kind !== 'restore' || s.strictRestore;
 
 	if (r.weeklyCap !== undefined && (s.week.harm[r.id] ?? 0) >= r.weeklyCap) {
@@ -126,7 +126,7 @@ export function checkBuy(s: State, r: Reward, doneToday: boolean): BuyCheck {
 
 export function buy(s: State, r: Reward, today: string = dayKey()): number {
 	rollover(s, today);
-	const p = price(r, s.economy.k);
+	const p = price(r, effectiveK(s.economy));
 	s.balance -= p;
 	if (r.weeklyCap !== undefined) s.week.harm[r.id] = (s.week.harm[r.id] ?? 0) + 1;
 	log(s, 'spend', -p, r.title);

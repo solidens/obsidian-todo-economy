@@ -10,7 +10,7 @@
  * сериала стоит примерно столько, сколько времени уйдёт, чтобы его заслужить.
  */
 
-import type { Profile, Reward, Task } from './types';
+import type { EconomyConst, LedgerEntry, Profile, Reward, Task } from './types';
 
 export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 export const round5 = (v: number) => Math.round(v / 5) * 5;
@@ -97,6 +97,62 @@ export function decayAmount(balance: number, softCap: number, days: number): num
 export function penaltyFor(t: Task): number {
 	if (t.prio < 1.2) return 0;
 	return Math.round(clamp(award(t) * 0.15, 5, 40));
+}
+
+/* ── пересчёт, когда оценка кажется несправедливой ─────────────────────── */
+
+/** Цена с учётом ручной поправки. Все места, где считается цена, идут сюда. */
+export const effectiveK = (e: Pick<EconomyConst, 'k' | 'tune'>) => e.k * (e.tune || 1);
+
+export const TUNE_LIMITS = [0.5, 2.0] as const;
+/** Один шаг «дешевле» примерно на 15 %: заметно, но не рушит систему разом. */
+const TUNE_STEP = 1.18;
+
+export function tuneBy(current: number, direction: 'cheaper' | 'pricier'): number {
+	const next = direction === 'cheaper' ? (current || 1) / TUNE_STEP : (current || 1) * TUNE_STEP;
+	return Math.round(clamp(next, TUNE_LIMITS[0], TUNE_LIMITS[1]) * 100) / 100;
+}
+
+export interface IncomeFact {
+	/** Месячный приход, посчитанный по фактическим начислениям. */
+	monthly: number;
+	/** За сколько дней есть данные. */
+	spanDays: number;
+	/** Сколько начислений попало в окно. */
+	samples: number;
+}
+
+const MONTH_DAYS = 30.44;
+/** Меньше недели данных — это не измерение, а совпадение. */
+export const MIN_SPAN_DAYS = 7;
+
+/**
+ * Приход по факту, а не по оценке из онбординга. Это главный честный ответ
+ * на «цены несправедливые»: чаще всего несправедлива не цена, а исходная
+ * оценка того, сколько человек успевает за месяц. Учитываются начисления и
+ * их откаты; траты, штрафы и сгорание — это уже расход, а не заработок.
+ */
+export function incomeFromHistory(
+	history: LedgerEntry[],
+	now: number = Date.now(),
+	windowDays = 30,
+): IncomeFact | null {
+	const cutoff = now - windowDays * 864e5;
+	const rows = history.filter((h) => h.at >= cutoff && (h.kind === 'earn' || h.kind === 'undo'));
+	if (!rows.length) return null;
+
+	const earliest = Math.min(...rows.map((h) => h.at));
+	const spanDays = Math.max(1, (now - earliest) / 864e5);
+	if (spanDays < MIN_SPAN_DAYS) return null;
+
+	const total = rows.reduce((s, h) => s + h.amount, 0);
+	if (total <= 0) return null;
+
+	return {
+		monthly: Math.round((total / spanDays) * MONTH_DAYS),
+		spanDays: Math.round(spanDays),
+		samples: rows.filter((h) => h.kind === 'earn').length,
+	};
 }
 
 /** Награда просит недельный лимит, если она вредная. */

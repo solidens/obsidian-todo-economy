@@ -4,7 +4,7 @@
  * псевдографики; на выход — массив строк из сегментов.
  */
 
-import { award, price, streakMult } from '../core/economy';
+import { award, effectiveK, price, streakMult } from '../core/economy';
 import { checkBuy } from '../core/ledger';
 import { nextDue, repeatBadge } from '../core/recurrence';
 import { mmss } from '../core/time';
@@ -159,7 +159,7 @@ function screenRewards(c: Ctx): Line[] {
 	}
 
 	const doneToday = store.doneToday();
-	const sorted = s.rewards.slice().sort((a, b) => price(a, s.economy.k) - price(b, s.economy.k));
+	const sorted = s.rewards.slice().sort((a, b) => price(a, effectiveK(s.economy)) - price(b, effectiveK(s.economy)));
 
 	for (const r of sorted) {
 		const chk = checkBuy(s, r, doneToday);
@@ -178,7 +178,7 @@ function screenRewards(c: Ctx): Line[] {
 
 	L.push(A.sep(g));
 	L.push(A.split(
-		[S(`k = ${s.economy.k.toFixed(1)}`, 'te-faint')],
+		[S(`k = ${effectiveK(s.economy).toFixed(1)}${s.economy.tune !== 1 ? ` (×${s.economy.tune})` : ''}`, 'te-faint')],
 		[S(`приход ≈ ${s.economy.monthlyIncome}/мес`, 'te-faint')], g));
 	L.push(A.bot(g));
 	return L;

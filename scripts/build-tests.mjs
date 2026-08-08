@@ -38,6 +38,7 @@ await esbuild.build({
 		'src/core/ledger.ts',
 		'src/core/tasks-md.ts',
 		'src/core/recurrence.ts',
+		'src/core/rebalance.ts',
 		'src/core/intake.ts',
 		'src/core/time.ts',
 		'src/llm/parse.ts',

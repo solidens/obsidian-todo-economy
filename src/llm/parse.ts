@@ -58,7 +58,8 @@ export function extractJson<T = unknown>(text: string): T | null {
 	for (const candidate of [cleaned.trim(), firstJsonChunk(cleaned)]) {
 		if (!candidate) continue;
 		try {
-			return JSON.parse(candidate);
+			const parsed: unknown = JSON.parse(candidate);
+			return parsed as T;
 		} catch {
 			// пробуем следующий кандидат
 		}

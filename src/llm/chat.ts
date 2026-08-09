@@ -66,17 +66,19 @@ async function askOne(key: string, model: string, messages: Msg[]): Promise<Atte
 		return { kind: retry ? 'retry' : 'fatal', message };
 	}
 
-	let body: Record<string, unknown>;
+	let parsed: unknown;
 	try {
-		body = res.json;
+		parsed = res.json;
 	} catch {
 		return { kind: 'retry', message: 'Модель прислала не JSON.' };
 	}
+	if (!parsed || typeof parsed !== 'object') return { kind: 'retry', message: 'Модель прислала не JSON.' };
+	const body = parsed as Record<string, unknown>;
 
 	// 200 с полем error — тоже авария: провайдер иногда отвечает так
-	if (body && body.error) return { kind: 'retry', message: 'Модель вернула ошибку.' };
+	if (body.error) return { kind: 'retry', message: 'Модель вернула ошибку.' };
 
-	const choices = body?.choices as Array<{ message?: { content?: string } }> | undefined;
+	const choices = body.choices as Array<{ message?: { content?: string } }> | undefined;
 	const text = choices?.[0]?.message?.content ?? '';
 	if (!text.trim()) return { kind: 'retry', message: 'Модель прислала пустой ответ.' };
 

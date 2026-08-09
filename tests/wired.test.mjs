@@ -155,6 +155,46 @@ test('битый data.json не роняет плагин', async () => {
 	assert.equal(store.state.economy.dayCap, 200, 'недостающие поля берутся из умолчаний');
 });
 
+test('баланс и награды пишутся в файл задач, а не только в data.json', async () => {
+	const { vault, store } = await fresh({ [FILE]: '- [ ] a `te 30m d1 p1 ~aaaa11`\n' });
+	await store.setDone('aaaa11', true, '2026-08-06');
+	store.state.rewards = [{ id: 'r1', title: 'Сериал', value: 1, harm: 1, freq: 5, kind: 'normal' }];
+	store.save();
+	await store.flush();
+
+	const text = vault.files.get(FILE);
+	assert.ok(text.includes('```te-state'), 'блок состояния появился в файле');
+	assert.ok(text.includes('"Сериал"'), 'награды попали в файл');
+	assert.ok(text.includes(String(store.state.balance)), 'баланс попал в файл');
+});
+
+test('состояние из файла подхватывается на «другом устройстве»', async () => {
+	// «первое устройство»: закрыло задачу, накопило баланс и серию
+	const first = await fresh({ [FILE]: '- [ ] a `te 30m d1 p1 ~aaaa11`\n' });
+	await first.store.setDone('aaaa11', true, '2026-08-06');
+	first.store.state.rewards = [{ id: 'r1', title: 'Сериал', value: 1, harm: 1, freq: 5, kind: 'normal' }];
+	await first.store.flush();
+	const synced = first.vault.files.get(FILE);
+
+	// «второе устройство»: свежий data.json (или его вообще нет), но тот же файл приехал синхронизацией
+	const second = await fresh({ [FILE]: synced });
+	assert.equal(second.store.state.balance, first.store.state.balance);
+	assert.equal(second.store.state.streak.days, first.store.state.streak.days);
+	assert.deepEqual(second.store.state.rewards.map((r) => r.title), ['Сериал']);
+});
+
+test('старый файл без блока состояния — переносится из data.json при первом чтении', async () => {
+	const vault = makeVault({ [FILE]: '- [ ] a `te 30m d1 p1 ~aaaa11`\n' });
+	const plugin = makePlugin(vault);
+	plugin.loadData = async () => ({ balance: 77, economy: { k: 5 } });
+	const store = new Store(plugin);
+	await store.load();
+
+	assert.equal(store.state.balance, 77, 'до записи блока состояние берётся из data.json');
+	await store.flush();
+	assert.ok(vault.files.get(FILE).includes('```te-state'), 'блок дописан в старый файл');
+});
+
 test('закрытая сегодня задача открывает награды', async () => {
 	const { store } = await fresh({ [FILE]: '- [ ] a `te 30m d1 p1 ~aaaa11`\n' });
 	assert.equal(store.doneToday('2026-08-06'), false);

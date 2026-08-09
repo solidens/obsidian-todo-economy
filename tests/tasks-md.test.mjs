@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-	DEFAULTS, insertTask, parseTasks, removeLine, replaceLines, serializeTask,
+	DEFAULTS, insertTask, parseTasks, readState, removeLine, replaceLines, serializeTask, writeState,
 } from '../.test-build/core/tasks-md.js';
 
 test('разбирает строку со всеми полями', () => {
@@ -133,4 +133,42 @@ test('номера строк совпадают с файлом', () => {
 	const ts = parseTasks(src);
 	assert.equal(ts[0].line, 2);
 	assert.equal(ts[1].line, 4);
+});
+
+/* ── блок состояния ────────────────────────────────────────────────────── */
+
+test('в файле без блока состояние не читается', () => {
+	assert.equal(readState('# Дела\n\n- [ ] a\n'), null);
+});
+
+test('блок состояния читается и не портит парсинг задач', () => {
+	const withState = writeState('- [ ] a\n', JSON.stringify({ balance: 40 }));
+	const ts = parseTasks(withState);
+	assert.equal(ts.length, 1, 'блок состояния не принимается за задачу');
+	assert.deepEqual(readState(withState), { balance: 40 });
+});
+
+test('повторная запись переписывает блок на месте, а не дублирует', () => {
+	let text = '# Дела\n\n- [ ] a\n';
+	text = writeState(text, JSON.stringify({ balance: 10 }));
+	const afterFirst = text;
+	text = writeState(text, JSON.stringify({ balance: 55, streak: 3 }));
+
+	assert.deepEqual(readState(text), { balance: 55, streak: 3 });
+	assert.equal((text.match(/```te-state/g) || []).length, 1, 'блок ровно один');
+	assert.equal(text.split('\n').length, afterFirst.split('\n').length, 'число строк не растёт при переписи');
+});
+
+test('запись блока не трогает остальной файл', () => {
+	const src = ['# Заголовок', '', 'Абзац.', '- [ ] a `te 30m d1 p1 ~aaaa11`'].join('\n');
+	const out = writeState(src, JSON.stringify({ balance: 1 })).split('\n');
+	assert.equal(out[0], '# Заголовок');
+	assert.equal(out[2], 'Абзац.');
+	assert.ok(out[3].startsWith('- [ ] a'));
+});
+
+test('битый JSON в блоке не роняет чтение', () => {
+	const src = '- [ ] a\n```te-state\n{не json\n```\n';
+	assert.equal(readState(src), null);
+	assert.equal(parseTasks(src).length, 1, 'задача снаружи блока всё равно читается');
 });

@@ -1,13 +1,23 @@
 /**
- * Хранилище. Два места и ни одного лишнего файла в хранилище заметок:
+ * Хранилище. Три места и ни одного лишнего файла в хранилище заметок:
  *
- *   ТУДУ.md                  задачи — обычные галочки, редактируются руками
- *   data.json плагина        баланс, награды, экономика, история, чат
+ *   ТУДУ.md                  задачи, а в конце — блок с балансом, наградами,
+ *                             экономикой, серией и историей
+ *   data.json плагина        то же самое как локальный кэш плюс чат и
+ *                             настройки интерфейса, которые синкать незачем
  *   локальное хранилище      ключ OpenRouter — не синкается между устройствами
  *
- * Ключ намеренно лежит отдельно от data.json: data.json уезжает в Obsidian
- * Sync и в git вместе с хранилищем, а ключ не должен. Это ровно то же
- * поведение, что было в вебе, где ключ жил в localStorage браузера.
+ * Баланс и награды раньше жили только в data.json, а его синхронизация
+ * (Obsidian Sync, git, Syncthing по подпискам) часто обходит стороной —
+ * человек синкает заметки, а не служебную папку плагина. Поэтому источник
+ * истины для «синкаемой» части состояния — сам файл задач: она пишется туда
+ * же блоком кода и читается оттуда при каждом перечитывании файла. data.json
+ * остаётся резервной копией и источником при миграции со старых версий,
+ * пока блок в файле ещё не появился.
+ *
+ * Ключ намеренно лежит отдельно от обоих: он не должен уезжать вместе с
+ * хранилищем. Это ровно то же поведение, что было в вебе, где ключ жил в
+ * localStorage браузера.
  */
 
 import { Notice, TFile, type App, type Plugin } from 'obsidian';
@@ -20,6 +30,36 @@ import { DEFAULT_STATE, type State, type Task } from './core/types';
 const KEY_SLOT = 'todo-economy:openrouter-key';
 const SAVE_DELAY = 600;
 const ECHO_WINDOW = 1500;
+
+/**
+ * Поля, которые едут в файле задач, а не только в data.json — то, ради чего
+ * человек хочет синкать один файл и получать баланс, награды, серию и
+ * историю на всех устройствах.
+ */
+const SYNCED_KEYS = [
+	'onboarded', 'onboardStep', 'economy', 'rewards', 'balance', 'granted',
+	'streak', 'day', 'week', 'decayedOn', 'history', 'profile', 'strictRestore',
+] as const satisfies readonly (keyof State)[];
+
+type SyncedState = Pick<State, (typeof SYNCED_KEYS)[number]>;
+
+function pickSynced(s: State): SyncedState {
+	return {
+		onboarded: s.onboarded,
+		onboardStep: s.onboardStep,
+		economy: s.economy,
+		rewards: s.rewards,
+		balance: s.balance,
+		granted: s.granted,
+		streak: s.streak,
+		day: s.day,
+		week: s.week,
+		decayedOn: s.decayedOn,
+		history: s.history,
+		profile: s.profile,
+		strictRestore: s.strictRestore,
+	};
+}
 
 type Listener = () => void;
 
@@ -70,21 +110,44 @@ export class Store {
 		await this.refreshTasks();
 	}
 
+	/**
+	 * data.json целиком: локальные поля берутся отсюда всегда, синкаемые —
+	 * как запасной вариант, пока файл задач ещё не прочитан или блока в нём
+	 * ещё нет (миграция со старой версии, где всё лежало только в data.json).
+	 */
 	private normalize(raw: Partial<State> | null): State {
 		const base = structuredClone(DEFAULT_STATE);
 		if (!raw || typeof raw !== 'object') return base;
-		const s: State = { ...base, ...raw };
-		// вложенные объекты сливаем поимённо, иначе старая схема оставит дыры
-		s.economy = { ...base.economy, ...(raw.economy ?? {}) };
-		s.streak = { ...base.streak, ...(raw.streak ?? {}) };
-		s.day = { ...base.day, ...(raw.day ?? {}) };
-		s.week = { ...base.week, ...(raw.week ?? {}) };
-		s.rewards = Array.isArray(raw.rewards) ? raw.rewards : [];
-		s.history = Array.isArray(raw.history) ? raw.history : [];
-		s.chat = Array.isArray(raw.chat) ? raw.chat : [];
-		s.granted = raw.granted && typeof raw.granted === 'object' ? raw.granted : {};
-		s.version = base.version;
-		return s;
+		base.tasksFile = typeof raw.tasksFile === 'string' && raw.tasksFile ? raw.tasksFile : base.tasksFile;
+		base.chat = Array.isArray(raw.chat) ? raw.chat : [];
+		base.lastModel = typeof raw.lastModel === 'string' ? raw.lastModel : null;
+		base.panelFont = typeof raw.panelFont === 'string' ? raw.panelFont : '';
+		base.glyphMode = raw.glyphMode === 'unicode' || raw.glyphMode === 'ascii' ? raw.glyphMode : 'auto';
+		this.mergeSynced(base, raw);
+		return base;
+	}
+
+	/**
+	 * Слить синкаемую часть состояния поимённо — иначе старая схема или
+	 * частичный объект из файла оставит дыры. Общий код для data.json (полный
+	 * State) и для блока, прочитанного из файла задач (произвольный JSON).
+	 */
+	private mergeSynced(base: State, raw: Partial<State>): void {
+		if (typeof raw.onboarded === 'boolean') base.onboarded = raw.onboarded;
+		if (typeof raw.onboardStep === 'string') base.onboardStep = raw.onboardStep as State['onboardStep'];
+		base.economy = { ...base.economy, ...(raw.economy && typeof raw.economy === 'object' ? raw.economy : {}) };
+		if (Array.isArray(raw.rewards)) base.rewards = raw.rewards;
+		if (typeof raw.balance === 'number' && Number.isFinite(raw.balance)) base.balance = raw.balance;
+		if (raw.granted && typeof raw.granted === 'object') base.granted = raw.granted;
+		base.streak = { ...base.streak, ...(raw.streak && typeof raw.streak === 'object' ? raw.streak : {}) };
+		base.day = { ...base.day, ...(raw.day && typeof raw.day === 'object' ? raw.day : {}) };
+		base.week = { ...base.week, ...(raw.week && typeof raw.week === 'object' ? raw.week : {}) };
+		if (raw.decayedOn === null || typeof raw.decayedOn === 'string') base.decayedOn = raw.decayedOn;
+		if (Array.isArray(raw.history)) base.history = raw.history;
+		if (raw.profile === null || (raw.profile && typeof raw.profile === 'object')) {
+			base.profile = raw.profile as State['profile'];
+		}
+		if (typeof raw.strictRestore === 'boolean') base.strictRestore = raw.strictRestore;
 	}
 
 	/** Отложенная запись: галочки и помодоро дёргают состояние часто. */
@@ -93,7 +156,7 @@ export class Store {
 		if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
 		this.saveTimer = window.setTimeout(() => {
 			this.saveTimer = null;
-			void this.plugin.saveData(this.state);
+			void this.persist();
 		}, SAVE_DELAY);
 	}
 
@@ -102,7 +165,27 @@ export class Store {
 			window.clearTimeout(this.saveTimer);
 			this.saveTimer = null;
 		}
+		await this.persist();
+	}
+
+	/** data.json как резервная копия целиком, плюс синкаемый блок в файле задач. */
+	private async persist(): Promise<void> {
 		await this.plugin.saveData(this.state);
+		await this.writeSyncedState();
+	}
+
+	/**
+	 * Переписать блок состояния в файле задач. Если файла ещё нет (например,
+	 * онбординг не дошёл до первой задачи) — молча пропускаем, data.json пока
+	 * побудет единственной копией; следующее сохранение допишет блок, как
+	 * только файл появится.
+	 */
+	private async writeSyncedState(): Promise<void> {
+		const file = this.getFile();
+		if (!file) return;
+		const json = JSON.stringify(pickSynced(this.state), null, 2);
+		this.lastWriteAt = Date.now();
+		await this.app.vault.process(file, (text) => md.writeState(text, json));
 	}
 
 	/* ── файл задач ────────────────────────────────────────────────────── */
@@ -153,6 +236,18 @@ export class Store {
 		this.fileMissing = false;
 		const text = await this.app.vault.cachedRead(file);
 		this.tasks = md.parseTasks(text);
+
+		// Блок в файле — источник истины для баланса, наград, серии и истории:
+		// его могло принести синхронизацией с другого устройства.
+		const synced = md.readState(text);
+		if (synced && typeof synced === 'object') {
+			this.mergeSynced(this.state, synced as Partial<State>);
+		} else {
+			// Блока ещё нет — старый файл или файл только что создан. Допишем его
+			// из текущего состояния (data.json на первом запуске), чтобы дальше
+			// синхронизация уже переносила актуальные данные.
+			this.save();
+		}
 
 		pruneGranted(this.state, new Set(this.tasks.map((t) => t.id)));
 

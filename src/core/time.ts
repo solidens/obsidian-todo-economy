@@ -2,9 +2,19 @@
 
 const p2 = (n: number) => String(n).padStart(2, '0');
 
-/** YYYY-MM-DD по локальному времени. */
+/**
+ * Сутки для экономики начинаются не в полночь, а в 2 ночи. Иначе тот, кто
+ * закрыл задачу в час ночи, фактически ещё живёт вчерашним днём: серия и
+ * дневной потолок уже перевалили на новый день, а спать он ещё не ложился.
+ * До двух часов ночи `dayKey` возвращает вчерашнюю дату — рубеж наступает
+ * на два часа позже календарного.
+ */
+const DAY_START_HOUR = 2;
+
+/** YYYY-MM-DD по локальному времени, с рубежом суток в 2 ночи. */
 export function dayKey(d: Date = new Date()): string {
-	return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+	const shifted = new Date(d.getTime() - DAY_START_HOUR * 3600_000);
+	return `${shifted.getFullYear()}-${p2(shifted.getMonth() + 1)}-${p2(shifted.getDate())}`;
 }
 
 /** ISO-неделя: YYYY-Www. Понедельник — первый день. */
@@ -27,10 +37,13 @@ export function daysBetween(a: string, b: string): number {
 	return Math.round((db - da) / 864e5);
 }
 
-/** Сдвинуть ключ YYYY-MM-DD на N дней. Переходы месяцев и лет — на Date. */
+/**
+ * Сдвинуть ключ YYYY-MM-DD на N дней. Переходы месяцев и лет — на Date.
+ * Полдень, а не полночь: иначе сдвиг суток в `dayKey` откусил бы день назад.
+ */
 export function addDays(key: string, n: number): string {
 	const [y, m, d] = key.split('-').map(Number);
-	return dayKey(new Date(y, m - 1, d + n));
+	return dayKey(new Date(y, m - 1, d + n, 12));
 }
 
 export const mmss = (sec: number) => `${p2(Math.floor(sec / 60))}:${p2(sec % 60)}`;

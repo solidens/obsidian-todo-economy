@@ -170,6 +170,66 @@ export function removeLine(text: string, line: number): string {
 	return lines.join('\n');
 }
 
+const STATE_LANG = 'te-state';
+const STATE_FENCE_RE = /^\s*(```|~~~)(\S*)\s*$/;
+const STATE_COMMENT =
+	'<!-- служебный блок плагина Todo Economy: баланс, награды, история, серия — руками лучше не трогать -->';
+
+/**
+ * Баланс, награды, экономика, серия и история покупок хранятся тем же
+ * файлом, что и задачи — в один блок кода в его конце. Задача парсера задач
+ * их не видит: `parseTasks` уже пропускает всё внутри ``` независимо от
+ * языка после открывающих кавычек, так что этот блок никогда не читается
+ * как список галочек.
+ *
+ * Ради этого: одна правка файла в другом Obsidian Sync/git/Syncthing —
+ * и остальные устройства подхватывают выполненные задачи, стрики и награды
+ * без data.json, который синхронизация часто обходит стороной.
+ */
+export function readState(text: string): unknown | null {
+	const lines = text.split('\n');
+	for (let i = 0; i < lines.length; i++) {
+		const m = STATE_FENCE_RE.exec(lines[i]);
+		if (!m || m[2] !== STATE_LANG) continue;
+		const fence = m[1];
+		const body: string[] = [];
+		for (let j = i + 1; j < lines.length; j++) {
+			if (lines[j].trim() === fence) break;
+			body.push(lines[j]);
+		}
+		try {
+			return JSON.parse(body.join('\n'));
+		} catch {
+			return null;
+		}
+	}
+	return null;
+}
+
+/**
+ * Записать блок состояния. Если он уже есть в файле — переписывается на
+ * месте, чтобы diff синхронизации оставался маленьким. Если нет — дописывается
+ * в конец с поясняющим комментарием, один раз.
+ */
+export function writeState(text: string, jsonText: string): string {
+	const lines = text.split('\n');
+	const block = [`\`\`\`${STATE_LANG}`, ...jsonText.split('\n'), '```'];
+
+	for (let i = 0; i < lines.length; i++) {
+		const m = STATE_FENCE_RE.exec(lines[i]);
+		if (!m || m[2] !== STATE_LANG) continue;
+		const fence = m[1];
+		let close = i + 1;
+		while (close < lines.length && lines[close].trim() !== fence) close++;
+		lines.splice(i, close - i + 1, ...block);
+		return lines.join('\n');
+	}
+
+	while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+	lines.push('', STATE_COMMENT, ...block, '');
+	return lines.join('\n');
+}
+
 export const STARTER_FILE = `# ТУДУ
 
 Задачи — обычные галочки. Плашка в конце строки хранит оценку в минутах,

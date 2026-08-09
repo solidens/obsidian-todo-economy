@@ -1,3 +1,18 @@
+# Todo Economy
+
+**A to-do list where finished tasks earn points and points buy rewards — priced
+honestly.** Instead of made-up point values, the plugin measures how many
+points you can realistically earn in a month and *solves* for reward prices
+from that budget, so an evening of your favourite show costs about as much
+effort as it takes to earn it. Everything lives in a single ASCII panel in
+Obsidian's sidebar, and — as of 1.3.0 — in a single markdown file: sync just
+that file and your balance, rewards, streak and history follow across
+devices. See the screenshots below, or jump to the [Russian
+README](#туду--экономика-баллов--плагин-obsidian) for full usage docs (the
+interface and in-app chat are Russian-only for now).
+
+---
+
 # ТУДУ · экономика баллов — плагин Obsidian
 
 Тудушник, где выполненные задачи приносят баллы, а баллы тратятся на награды.

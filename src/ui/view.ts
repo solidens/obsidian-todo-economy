@@ -74,7 +74,7 @@ export class EconomyView extends ItemView {
 	 */
 	refit(): void {
 		const font = this.store.state.panelFont.trim();
-		this.grid.style.fontFamily = font ? `${font}, var(--font-monospace)` : '';
+		this.grid.setCssStyles({ fontFamily: font ? `${font}, var(--font-monospace)` : '' });
 
 		this.profile = A.probeFont(this.grid, A.GLYPH_SETS.unicode);
 		this.glyphs = A.pickGlyphs(this.store.state.glyphMode, this.profile.gridSafe);

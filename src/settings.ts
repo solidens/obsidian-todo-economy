@@ -28,10 +28,12 @@ export class EconomySettingsTab extends PluginSettingTab {
 		if (!el) return;
 		const s = this.plugin.store.state;
 		const probe = el.createDiv();
-		probe.style.cssText = 'position:absolute;left:-9999px;visibility:hidden';
-		probe.style.fontFamily = s.panelFont.trim()
-			? `${s.panelFont.trim()}, var(--font-monospace)`
-			: 'var(--font-monospace)';
+		probe.setCssStyles({
+			position: 'absolute', left: '-9999px', visibility: 'hidden',
+			fontFamily: s.panelFont.trim()
+				? `${s.panelFont.trim()}, var(--font-monospace)`
+				: 'var(--font-monospace)',
+		});
 		let text: string;
 		try {
 			text = describeFont(probeFont(probe, GLYPH_SETS.unicode));
@@ -95,7 +97,7 @@ export class EconomySettingsTab extends PluginSettingTab {
 				}),
 			);
 
-		containerEl.createEl('h3', { text: 'Панель' });
+		new Setting(containerEl).setName('Панель').setHeading();
 
 		new Setting(containerEl)
 			.setName('Шрифт панели')
@@ -136,7 +138,7 @@ export class EconomySettingsTab extends PluginSettingTab {
 					}),
 			);
 
-		containerEl.createEl('h3', { text: 'Экономика' });
+		new Setting(containerEl).setName('Экономика').setHeading();
 
 		new Setting(containerEl)
 			.setName('Потолок начислений за день')
@@ -238,7 +240,7 @@ export class EconomySettingsTab extends PluginSettingTab {
 			}
 		}
 
-		containerEl.createEl('h3', { text: 'Обслуживание' });
+		new Setting(containerEl).setName('Обслуживание').setHeading();
 
 		new Setting(containerEl)
 			.setName('Модель')

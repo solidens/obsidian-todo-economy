@@ -186,7 +186,7 @@ const STATE_COMMENT =
  * и остальные устройства подхватывают выполненные задачи, стрики и награды
  * без data.json, который синхронизация часто обходит стороной.
  */
-export function readState(text: string): unknown | null {
+export function readState(text: string): unknown {
 	const lines = text.split('\n');
 	for (let i = 0; i < lines.length; i++) {
 		const m = STATE_FENCE_RE.exec(lines[i]);

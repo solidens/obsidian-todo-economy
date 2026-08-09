@@ -34,14 +34,14 @@ const ECHO_WINDOW = 1500;
 /**
  * Поля, которые едут в файле задач, а не только в data.json — то, ради чего
  * человек хочет синкать один файл и получать баланс, награды, серию и
- * историю на всех устройствах.
+ * историю на всех устройствах. Список полей нужен только как тип: раз в
+ * рантайме уже есть `pickSynced`, отдельный массив ключей был бы мёртвым кодом.
  */
-const SYNCED_KEYS = [
-	'onboarded', 'onboardStep', 'economy', 'rewards', 'balance', 'granted',
-	'streak', 'day', 'week', 'decayedOn', 'history', 'profile', 'strictRestore',
-] as const satisfies readonly (keyof State)[];
-
-type SyncedState = Pick<State, (typeof SYNCED_KEYS)[number]>;
+type SyncedState = Pick<
+	State,
+	'onboarded' | 'onboardStep' | 'economy' | 'rewards' | 'balance' | 'granted' |
+	'streak' | 'day' | 'week' | 'decayedOn' | 'history' | 'profile' | 'strictRestore'
+>;
 
 function pickSynced(s: State): SyncedState {
 	return {
@@ -134,7 +134,7 @@ export class Store {
 	 */
 	private mergeSynced(base: State, raw: Partial<State>): void {
 		if (typeof raw.onboarded === 'boolean') base.onboarded = raw.onboarded;
-		if (typeof raw.onboardStep === 'string') base.onboardStep = raw.onboardStep as State['onboardStep'];
+		if (typeof raw.onboardStep === 'string') base.onboardStep = raw.onboardStep;
 		base.economy = { ...base.economy, ...(raw.economy && typeof raw.economy === 'object' ? raw.economy : {}) };
 		if (Array.isArray(raw.rewards)) base.rewards = raw.rewards;
 		if (typeof raw.balance === 'number' && Number.isFinite(raw.balance)) base.balance = raw.balance;
@@ -145,7 +145,7 @@ export class Store {
 		if (raw.decayedOn === null || typeof raw.decayedOn === 'string') base.decayedOn = raw.decayedOn;
 		if (Array.isArray(raw.history)) base.history = raw.history;
 		if (raw.profile === null || (raw.profile && typeof raw.profile === 'object')) {
-			base.profile = raw.profile as State['profile'];
+			base.profile = raw.profile;
 		}
 		if (typeof raw.strictRestore === 'boolean') base.strictRestore = raw.strictRestore;
 	}

@@ -25,7 +25,7 @@ export interface Msg {
 const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> =>
 	Promise.race([
 		p,
-		new Promise<T>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
+		new Promise<T>((_, rej) => window.setTimeout(() => rej(new Error('timeout')), ms)),
 	]);
 
 interface Attempt {

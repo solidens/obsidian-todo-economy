@@ -25,7 +25,7 @@ const numOf = (v: unknown, fallback: number): number => {
 const asArray = (v: unknown): unknown[] => {
 	if (Array.isArray(v)) return v;
 	if (v && typeof v === 'object') {
-		for (const val of Object.values(v as Record<string, unknown>)) {
+		for (const val of Object.values(v)) {
 			if (Array.isArray(val)) return val;
 		}
 	}

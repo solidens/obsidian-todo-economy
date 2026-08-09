@@ -194,7 +194,7 @@ function snapshot(host: HTMLElement): Snapshot | null {
 	if (!el || !host.contains(el)) return null;
 	const act = el.dataset?.act;
 	if (!act) return null;
-	if (el instanceof HTMLInputElement) {
+	if (el.instanceOf(HTMLInputElement)) {
 		return { act, isInput: true, value: el.value, sel: [el.selectionStart ?? 0, el.selectionEnd ?? 0] };
 	}
 	return { act, isInput: false };
@@ -274,7 +274,7 @@ export function paint(host: HTMLElement, lines: Line[], h: PaintHandlers): HTMLE
 	if (hits.length) (restore ?? hits[0]).tabIndex = 0;
 	if (restore) {
 		restore.focus({ preventScroll: true });
-		if (restore instanceof HTMLInputElement && keep?.sel) {
+		if (restore.instanceOf(HTMLInputElement) && keep?.sel) {
 			restore.setSelectionRange(keep.sel[0], keep.sel[1]);
 		}
 	}
@@ -285,7 +285,7 @@ export function paint(host: HTMLElement, lines: Line[], h: PaintHandlers): HTMLE
 export function wireKeyboard(host: HTMLElement, getHits: () => HTMLElement[]): (e: KeyboardEvent) => void {
 	return (e: KeyboardEvent) => {
 		const el = host.ownerDocument.activeElement as HTMLElement | null;
-		if (!el || el instanceof HTMLInputElement) return;
+		if (!el || el.instanceOf(HTMLInputElement)) return;
 		const hits = getHits();
 		const i = hits.indexOf(el);
 		if (i < 0) return;
@@ -321,8 +321,10 @@ export interface FontProfile {
 /** Проба ширины: строку меряем двадцатикратно, чтобы сгладить округление. */
 export function makeMeasurer(host: HTMLElement): { of: (s: string) => number; dispose: () => void } {
 	const probe = host.createSpan();
-	probe.style.cssText =
-		'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:pre;pointer-events:none';
+	probe.setCssStyles({
+		position: 'absolute', left: '-9999px', top: '0',
+		visibility: 'hidden', whiteSpace: 'pre', pointerEvents: 'none',
+	});
 	return {
 		of: (s: string) => {
 			if (!s) return 0;

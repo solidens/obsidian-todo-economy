@@ -71,8 +71,13 @@ export default class TodoEconomyPlugin extends Plugin {
 		);
 	}
 
-	async onunload(): Promise<void> {
-		await this.store.flush();
+	/**
+	 * `Component.onunload` объявлен как `void` — не `async`, чтобы не давать
+	 * промис туда, где его не ждут. `flush()` не await'им: он не зависит от
+	 * `dispose()`, а тот лишь снимает подписки и таймер debounce.
+	 */
+	onunload(): void {
+		void this.store.flush();
 		this.store.dispose();
 	}
 

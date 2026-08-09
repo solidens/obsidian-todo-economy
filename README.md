@@ -1,15 +1,45 @@
 # Todo Economy
 
-**A to-do list where finished tasks earn points and points buy rewards — priced
-honestly.** Instead of made-up point values, the plugin measures how many
-points you can realistically earn in a month and *solves* for reward prices
+A to-do list where finished tasks earn points and points buy rewards — priced
+honestly. Instead of made-up point values, the plugin measures how many
+points you can realistically earn in a month and solves for reward prices
 from that budget, so an evening of your favourite show costs about as much
-effort as it takes to earn it. Everything lives in a single ASCII panel in
-Obsidian's sidebar, and — as of 1.3.0 — in a single markdown file: sync just
-that file and your balance, rewards, streak and history follow across
-devices. See the screenshots below, or jump to the [Russian
-README](#туду--экономика-баллов--плагин-obsidian) for full usage docs (the
-interface and in-app chat are Russian-only for now).
+effort as it takes to earn it. Priority tasks earn more; harmful rewards cost
+more and carry a weekly cap instead of being banned outright. The whole
+interface is a monospace ASCII panel that lives in Obsidian's sidebar, not a
+separate window or a set of custom widgets.
+
+**What it stores.** Tasks live as ordinary checkboxes in one markdown file in
+your vault — no note-per-task clutter. A trailing code span on each line
+carries the estimate, difficulty, priority, due date and an id, e.g.
+`- [ ] Finish the report` followed by `` `te 90m d1.2 p1.3 due2026-08-08 ~k3f9x2` ``.
+As of
+1.3.0, your balance, rewards, streak, day cap and purchase history also live
+in that same file, in a fenced `te-state` code block the plugin reads and
+writes. Sync just that one file — Obsidian Sync, iCloud, git, whatever you
+already use — and every device sees the same balance, streak and rewards. The
+plugin's own `data.json` is kept only as a local backup and for
+device-only settings (chat history, UI preferences); your OpenRouter API key
+lives in local storage and never leaves the device.
+
+**How pricing works.** On first run, a short chat-based onboarding asks about
+your workday, your recurring tasks, and what you reward yourself with —
+including the things you reach for and regret. From that it estimates your
+realistic monthly point income and solves a single coefficient `k` so that
+`price = round5(k · reward_value · harm_multiplier)`, closing the loop between
+what you can earn and what things cost. If the answers stop matching reality,
+you can ask the in-app chat to recompute `k` from your actual earning history
+instead of the original estimate.
+
+**Caveat:** the in-app chat and onboarding are Russian-only for now (an
+English UI is on the roadmap, not yet built). The full usage guide — recurring
+tasks, the rewards screen, the economy formulas, day-boundary rules, and so
+on — is written in Russian below; screenshots and the file format above should
+give you the gist even without reading it.
+
+Jump to: [full Russian
+docs](#туду--экономика-баллов--плагин-obsidian) · [installation](#установка) ·
+[how the economy works](#как-устроена-экономика)
 
 ---
 

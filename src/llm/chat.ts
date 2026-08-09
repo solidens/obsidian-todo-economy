@@ -68,7 +68,7 @@ async function askOne(key: string, model: string, messages: Msg[]): Promise<Atte
 
 	let body: Record<string, unknown>;
 	try {
-		body = res.json as Record<string, unknown>;
+		body = res.json;
 	} catch {
 		return { kind: 'retry', message: 'Модель прислала не JSON.' };
 	}

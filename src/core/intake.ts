@@ -6,7 +6,7 @@
  */
 
 import { defaultWeeklyCap, sane } from './economy';
-import { saneRepeat } from './recurrence';
+import { detectRepeat, saneRepeat } from './recurrence';
 import { newId } from './tasks-md';
 import type { Profile, Reward, RewardKind } from './types';
 
@@ -47,18 +47,25 @@ export interface TaskDraft {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-export function toTask(raw: unknown): TaskDraft | null {
+/**
+ * `said` — исходная фраза человека. Если модель потеряла regularity, интервал
+ * вычитывается из фразы (а на крайний случай — из названия) напрямую.
+ */
+export function toTask(raw: unknown, said?: string): TaskDraft | null {
 	const o = rec(raw);
 	const title = str(o.title ?? o.name ?? o.task);
 	if (!title) return null;
 	const due = str(o.due ?? o.deadline, 10);
+	const repeat = saneRepeat(o.repeat ?? o.repeatDays ?? o.every ?? o.everyDays)
+		?? detectRepeat(said)
+		?? detectRepeat(title);
 	return {
 		title,
 		min: sane.min(numOf(o.min ?? o.minutes ?? o.duration, 30)),
 		diff: sane.diff(numOf(o.diff ?? o.difficulty, 1)),
 		prio: sane.prio(numOf(o.prio ?? o.priority, 1)),
 		due: DATE_RE.test(due) ? due : undefined,
-		repeat: saneRepeat(o.repeat ?? o.repeatDays ?? o.every ?? o.everyDays),
+		repeat,
 	};
 }
 

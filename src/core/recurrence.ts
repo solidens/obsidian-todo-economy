@@ -54,6 +54,56 @@ export function rollRecurring<T extends Task>(tasks: T[], today: string): T[] {
 /** Ключи начислений, которые надо отпустить: занятие закрыто, эпизод прожит. */
 export const grantKeysFor = (tasks: Task[]): string[] => tasks.map((t) => t.id);
 
+/**
+ * Регулярность, вычитанная из самой фразы. Нужна как страховка: бесплатные
+ * модели сплошь и рядом теряют repeat, и «читать каждый день по 30 минут»
+ * заводится разовой задачей, которая после первой галочки уже не вернётся.
+ *
+ * Порядок правил важен: «через день» проверяется раньше «день», иначе
+ * ежедневное правило съест интервальную фразу.
+ */
+const REPEAT_RULES: Array<[RegExp, number]> = [
+	[/через\s+день/, 2],
+	[/каждые?\s+два\s+дня/, 2],
+	[/каждые?\s+три\s+дня/, 3],
+	[/через\s+два\s+дня/, 3],
+	[/раз\s+в\s+две\s+недели/, 14],
+	[/раз\s+в\s+недел[юия]/, 7],
+	[/еженедельно/, 7],
+	[/каждую\s+недел[юи]/, 7],
+	[/раз\s+в\s+месяц/, 30],
+	[/ежемесячно/, 30],
+	[/ежедневно/, 1],
+	[/каждый\s+день/, 1],
+	[/каждый\s+раз/, 1],
+	[/по\s+утрам/, 1],
+	[/каждое\s+утро/, 1],
+	[/каждый\s+вечер/, 1],
+	[/по\s+вечерам/, 1],
+];
+
+const NUMERIC_RULES: Array<[RegExp, (n: number) => number]> = [
+	// \b о кириллицу не спотыкается только потому, что её здесь нет: границу
+	// слова приходится изображать явным «дальше не буква».
+	[/раз\s+в\s+(\d{1,3})\s*(?:дн(?:я|ей|ь)|д)(?![а-я])/, (n) => n],
+	[/кажды[ех]\s+(\d{1,3})\s*(?:дн(?:я|ей|ь)|д)(?![а-я])/, (n) => n],
+	[/раз\s+в\s+(\d{1,2})\s*недел/, (n) => n * 7],
+	[/(\d{1,3})\s*раза?\s+в\s+недел/, (n) => Math.max(1, Math.round(7 / n))],
+];
+
+export function detectRepeat(text: unknown): number | undefined {
+	if (typeof text !== 'string') return undefined;
+	const s = text.toLowerCase().replace(/ё/g, 'е');
+	for (const [re, mul] of NUMERIC_RULES) {
+		const m = re.exec(s);
+		if (m) return saneRepeat(mul(Number(m[1])));
+	}
+	for (const [re, days] of REPEAT_RULES) {
+		if (re.test(s)) return days;
+	}
+	return undefined;
+}
+
 export function describeRepeat(days: number | undefined): string {
 	if (!days) return '';
 	if (days === 1) return 'каждый день';

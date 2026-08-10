@@ -12,7 +12,7 @@ import {
 	suggestDayCap, suggestSoftCap,
 } from './core/economy';
 import { rebalance, findTask, type Complaint } from './core/rebalance';
-import { saneRepeat } from './core/recurrence';
+import { detectRepeat, saneRepeat } from './core/recurrence';
 import type { Task } from './core/types';
 import { toRewards, toRoutine, toTask, toWorkdays } from './core/intake';
 import { describeRepeat } from './core/recurrence';
@@ -40,6 +40,10 @@ const PROMPTS: Record<string, string> = {
 Несправедлива оценка ОДНОЙ задачи («отчёт вовсе не на полтора часа, а на три», «зарядка идёт тяжелее, чем записано», «это дело важнее») — верни adjust и только те поля, которые меняются:
 {"kind":"adjust","target":"часть названия задачи","min":180,"diff":1.6,"prio":1.8}
 
+Человек просит сделать УЖЕ ЗАВЕДЁННОЕ дело регулярным («работу отмечай каждый день», «прогулка теперь ежедневная», «повторяй мытьё мисок через день») — тоже adjust, но с полем repeat:
+{"kind":"adjust","target":"часть названия задачи","repeat":1}
+Чтобы снять повтор («больше не повторяй»), верни {"kind":"adjust","target":"...","repeat":0}.
+
 Несправедлива ВСЯ система — верни rebalance:
 {"kind":"rebalance","want":"cheaper"} — «награды слишком дорогие», «до них не добраться», «ничего не могу себе позволить»
 {"kind":"rebalance","want":"pricier"} — «слишком легко покупается», «баллы девать некуда», «награды ничего не стоят»
@@ -47,7 +51,7 @@ const PROMPTS: Record<string, string> = {
 
 Если жалоба общая и непонятно, в какую сторону — бери "solve": честнее пересчитать приход по фактическим начислениям, чем подкручивать цены наугад.
 
-Дальше — обычный разбор. Если это дело — верни задачу, если это то, чем он себя награждает — награду, иначе none. ${SCALES} due — срок в формате YYYY-MM-DD, только если он явно назван. repeat — раз в сколько дней дело повторяется: 1 для «каждый день» и «ежедневно», 2 для «через день», 7 для «раз в неделю». Ставь repeat только если человек прямо сказал, что дело регулярное. ${JSON_ONLY} Форматы: {"kind":"task","title":"...","min":90,"diff":1.2,"prio":1.4,"due":"2026-08-08","repeat":1} или {"kind":"reward","title":"...","value":2.0,"freq":8,"kind2":"normal"} или {"kind":"none"}`,
+Дальше — обычный разбор. Если это дело — верни задачу, если это то, чем он себя награждает — награду, иначе none. ${SCALES} due — срок в формате YYYY-MM-DD, только если он явно назван. repeat — раз в сколько дней дело повторяется: 1 для «каждый день» и «ежедневно», 2 для «через день», 7 для «раз в неделю». Ставь repeat, если регулярность видна из фразы ИЛИ из самого названия дела: «читать каждый день по 30 минут» → repeat 1, «зарядка по утрам» → repeat 1, «убираться раз в неделю» → repeat 7. ${JSON_ONLY} Форматы: {"kind":"task","title":"...","min":90,"diff":1.2,"prio":1.4,"due":"2026-08-08","repeat":1} или {"kind":"reward","title":"...","value":2.0,"freq":8,"kind2":"normal"} или {"kind":"none"}`,
 };
 
 const QUESTIONS: Record<OnboardStep, string> = {
@@ -271,22 +275,35 @@ export class Brain {
 		const kind = String(j.kind ?? '').toLowerCase();
 
 		if (kind === 'task') {
-			const t = toTask(j);
+			const t = toTask(j, msg);
 			if (!t) {
 				this.say('system', 'Не понял, что за задача. Попробуй назвать её и сказать, сколько займёт.');
 				return;
 			}
+			// «Работу отмечай каждый день» модель нередко разбирает как новую
+			// задачу. Если такая уже есть — это правка регулярности, а не дубль.
+			const same = findTask(this.store.tasks, t.title);
+			if (same && t.repeat && same.repeat !== t.repeat) {
+				await this.adjustTask({ target: t.title, repeat: t.repeat }, msg);
+				return;
+			}
+
 			const id = await this.store.addTask(t);
 			if (!id) return;
 			const due = t.due ? `, срок ${t.due}` : '';
 			const rep = t.repeat ? `, ${describeRepeat(t.repeat)}` : '';
+			// Разовая задача после галочки больше не вернётся — про это лучше
+			// сказать сразу, чем через неделю разбираться, почему нет баллов.
+			const hint = t.repeat
+				? ''
+				: '\n\n  Это разовое дело: отметишь — и оно закроется насовсем. Если оно регулярное, скажи «повторяй каждый день» или «через день».';
 			this.say('assistant',
-				`Завёл: ${t.title}\n  ${t.min} мин · сложн ${t.diff} · прио ${t.prio}${due}${rep}`);
+				`Завёл: ${t.title}\n  ${t.min} мин · сложн ${t.diff} · прио ${t.prio}${due}${rep}${hint}`);
 			return;
 		}
 
 		if (kind === 'adjust') {
-			await this.adjustTask(j);
+			await this.adjustTask(j, msg);
 			return;
 		}
 
@@ -319,7 +336,7 @@ export class Brain {
 	 * Правка оценки одной задачи. Меняются только названные поля — молчаливо
 	 * переписать остальные значениями по умолчанию было бы хуже, чем ничего.
 	 */
-	private async adjustTask(j: Record<string, unknown>): Promise<void> {
+	private async adjustTask(j: Record<string, unknown>, said = ''): Promise<void> {
 		const target = String(j.target ?? j.title ?? '').trim();
 		const t = findTask(this.store.tasks, target);
 		if (!t) {
@@ -334,10 +351,19 @@ export class Brain {
 		if (j.min !== undefined) patch.min = sane.min(Number(j.min));
 		if (j.diff !== undefined) patch.diff = sane.diff(Number(j.diff));
 		if (j.prio !== undefined) patch.prio = sane.prio(Number(j.prio));
+		// Снятие повтора — это repeat 0 или явное «не повторяй»: в обоих случаях
+		// в patch попадает undefined, и плашка теряет rep.
+		const drops = /\b(не\s+повторя|убер[иь].*повтор|переста(нь|ть)\s+повторя|разова)/i.test(said);
 		if (j.repeat !== undefined) patch.repeat = saneRepeat(j.repeat);
+		else if (drops) patch.repeat = undefined;
+		else {
+			const guessed = detectRepeat(said);
+			if (guessed !== undefined) patch.repeat = guessed;
+		}
+		const touchesRepeat = 'repeat' in patch;
 
 		if (!Object.keys(patch).length) {
-			this.say('system', 'Понял, что оценка не нравится, но не понял, что именно поменять: минуты, сложность или важность?');
+			this.say('system', 'Понял, что оценка не нравится, но не понял, что именно поменять: минуты, сложность, важность или регулярность?');
 			return;
 		}
 
@@ -345,8 +371,18 @@ export class Brain {
 		const next = await this.store.patchTask(t.id, patch);
 		if (!next) return;
 
+		// Включили повтор у уже закрытой задачи — пусть всплывёт сразу, если её
+		// срок давно прошёл, а не ждёт следующего запуска Obsidian.
+		if (touchesRepeat && next.repeat) await this.store.rollRecurring();
+
+		const rep = touchesRepeat
+			? next.repeat
+				? `\n  теперь ${describeRepeat(next.repeat)} — галочка будет открываться заново`
+				: '\n  повтор снят: дело стало разовым'
+			: '';
+
 		this.say('assistant',
 			`Поправил «${next.title}»: ${next.min} мин · сложн ${next.diff} · прио ${next.prio}\n` +
-			`  начисление ${was} → ${award(next)}`);
+			`  начисление ${was} → ${award(next)}${rep}`);
 	}
 }

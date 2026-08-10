@@ -157,3 +157,13 @@ test('рабочие дни зажимаются в неделю', () => {
 	assert.equal(toWorkdays({ workdays: 0 }), 1);
 	assert.equal(toWorkdays({}), null);
 });
+
+test('regularity подхватывается из фразы, когда модель её потеряла', () => {
+	assert.equal(toTask({ title: 'Зарядка', min: 10 }, 'зарядка каждый день по утрам').repeat, 1);
+	assert.equal(toTask({ title: 'читать каждый день по 30 минут' }).repeat, 1);
+	assert.equal(toTask({ title: 'Отчёт', min: 90 }, 'дожать отчёт к пятнице').repeat, undefined);
+});
+
+test('явный repeat от модели важнее догадки по фразе', () => {
+	assert.equal(toTask({ title: 'Зал', repeat: 2 }, 'ходить в зал каждый день').repeat, 2);
+});

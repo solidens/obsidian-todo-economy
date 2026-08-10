@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-	describeRepeat, nextDue, repeatBadge, rollRecurring, saneRepeat, shouldReopen,
+	describeRepeat, detectRepeat, nextDue, repeatBadge, rollRecurring, saneRepeat, shouldReopen,
 } from '../.test-build/core/recurrence.js';
 import { addDays } from '../.test-build/core/time.js';
 import { parseTasks, serializeTask } from '../.test-build/core/tasks-md.js';
@@ -115,4 +115,32 @@ test('интервал называется по-человечески', () => 
 	assert.equal(repeatBadge(1), 'ежедн.');
 	assert.equal(repeatBadge(21), '3нед');
 	assert.equal(repeatBadge(undefined), '');
+});
+
+/* ── регулярность из фразы ─────────────────────────────────────────────── */
+
+test('интервал вычитывается из фразы', () => {
+	assert.equal(detectRepeat('читать каждый день по 30 минут'), 1);
+	assert.equal(detectRepeat('Зарядка по утрам'), 1);
+	assert.equal(detectRepeat('ходить в зал через день'), 2);
+	assert.equal(detectRepeat('убираться раз в неделю'), 7);
+	assert.equal(detectRepeat('созвон раз в две недели'), 14);
+	assert.equal(detectRepeat('мыть миски раз в 3 дня'), 3);
+	assert.equal(detectRepeat('бассейн 2 раза в неделю'), 4);
+	assert.equal(detectRepeat('платить за квартиру раз в месяц'), 30);
+});
+
+test('«через день» не путается с «каждый день»', () => {
+	assert.equal(detectRepeat('через день зарядка каждый день не выйдет'), 2);
+});
+
+test('разовое дело интервала не получает', () => {
+	assert.equal(detectRepeat('дожать отчёт к пятнице'), undefined);
+	assert.equal(detectRepeat('весь день делать презентацию'), undefined);
+	assert.equal(detectRepeat(null), undefined);
+	assert.equal(detectRepeat(42), undefined);
+});
+
+test('ё не мешает разбору', () => {
+	assert.equal(detectRepeat('ЕЖЕДНЕВНО гулять'), 1);
 });

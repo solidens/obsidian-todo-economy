@@ -38,7 +38,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${GITHUB_REF#refs/tags/}" \
-            --title "${GITHUB_REF#refs/tags/}" \
-            --generate-notes \
-            main.js manifest.json styles.css
+          TAG="${GITHUB_REF#refs/tags/}"
+          # Тег могли перевыставить — тогда релиз уже есть, и create падает.
+          # Обновляем файлы на месте, вместо того чтобы валить сборку.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" main.js manifest.json styles.css --clobber
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --generate-notes \
+              main.js manifest.json styles.css
+          fi

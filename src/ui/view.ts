@@ -29,6 +29,8 @@ export class EconomyView extends ItemView {
 	private grid!: HTMLElement;
 	private ro: ResizeObserver | null = null;
 	private pomo: Pomodoro = { taskId: null, left: WORK, running: false, rest: false };
+	/** Взведённый крестик: удаление идёт вторым нажатием. */
+	private pendingDel: string | null = null;
 
 	constructor(leaf: WorkspaceLeaf, store: Store, brain: Brain) {
 		super(leaf);
@@ -106,6 +108,7 @@ export class EconomyView extends ItemView {
 				tab: this.tab,
 				pomo: this.pomo,
 				busy: this.brain.busy,
+				pendingDel: this.pendingDel,
 			}),
 			{ onAct: (a) => void this.act(a), onSubmit: (a, v) => void this.submit(a, v) },
 		);
@@ -139,7 +142,34 @@ export class EconomyView extends ItemView {
 		const [kind, id] = act.split(':');
 		const s = this.store.state;
 
+		// Любое другое нажатие снимает взведённый крестик: подтверждение
+		// живёт ровно до следующего действия, а не до конца сессии.
+		const armed = this.pendingDel;
+		if (kind !== 'deltask' && kind !== 'delrew') this.pendingDel = null;
+
 		switch (kind) {
+			case 'deltask': {
+				if (armed !== act) { this.pendingDel = act; this.draw(); return; }
+				this.pendingDel = null;
+				const t = this.store.tasks.find((x) => x.id === id);
+				await this.store.removeTask(id);
+				delete s.granted[id];
+				this.store.save();
+				if (t) new Notice(L().deleted(t.title));
+				return;
+			}
+
+			case 'delrew': {
+				if (armed !== act) { this.pendingDel = act; this.draw(); return; }
+				this.pendingDel = null;
+				const r = s.rewards.find((x) => x.id === id);
+				if (!r) { this.draw(); return; }
+				s.rewards = s.rewards.filter((x) => x.id !== id);
+				this.store.save();
+				new Notice(L().deleted(r.title));
+				return;
+			}
+
 			case 'tab':
 				this.tab = id as Tab;
 				this.draw();

@@ -33,9 +33,21 @@ export interface Ctx {
 	tab: Tab;
 	pomo: Pomodoro;
 	busy: boolean;
+	/** Действие удаления, ждущее подтверждения вторым нажатием. */
+	pendingDel: string | null;
 }
 
 const COMPACT_AT = 46;
+
+/**
+ * Крестик удаления. Первое нажатие взводит подтверждение, второе — удаляет:
+ * модального окна тут нет, а промахнуться по узкой кнопке на телефоне легко.
+ */
+function del(c: Ctx, act: string, title: string): Seg {
+	const armed = c.pendingDel === act;
+	return H(armed ? '×?' : '×', act, armed ? 'te-bad' : 'te-faint',
+		armed ? tr().delConfirmHint(title) : tr().delHint(title));
+}
 
 /* ── шапка ──────────────────────────────────────────────────────────────── */
 
@@ -96,8 +108,8 @@ function screenGoals(c: Ctx): Line[] {
 			S(t.title, t.done ? 'te-strike' : overdue ? 'te-warn' : ''),
 		];
 		const right: Seg[] = t.done
-			? [S(`+${got}`, 'te-good'), S(` ${g.check}`, 'te-good')]
-			: [S(`+${base}`, 'te-dim'), S('  ')];
+			? [S(`+${got}`, 'te-good'), S(` ${g.check}  `, 'te-good'), del(c, `deltask:${t.id}`, t.title)]
+			: [S(`+${base}`, 'te-dim'), S('   '), del(c, `deltask:${t.id}`, t.title)];
 		L.push(A.split(left, right, g));
 
 		if (t.done) {
@@ -170,8 +182,10 @@ function screenRewards(c: Ctx): Line[] {
 			S(tag, r.kind === 'harmful' ? 'te-bad' : 'te-good'),
 		];
 		const right: Seg[] = chk.ok
-			? [S(`${chk.price}  `, 'te-dim'), H(tr().buy, `buy:${r.id}`, 'te-acc', tr().buyHint(r.title, chk.price))]
-			: [S(`${chk.price}  `, 'te-faint'), S(g.cross, 'te-faint')];
+			? [S(` ${chk.price}  `, 'te-dim'), H(tr().buy, `buy:${r.id}`, 'te-acc', tr().buyHint(r.title, chk.price)),
+				S('  '), del(c, `delrew:${r.id}`, r.title)]
+			: [S(` ${chk.price}  `, 'te-faint'), S(g.cross, 'te-faint'),
+				S('  '), del(c, `delrew:${r.id}`, r.title)];
 		L.push(A.split(left, right, g));
 		if (!chk.ok) L.push(A.row([S(`  └ ${chk.reason}`, 'te-faint')], g));
 	}

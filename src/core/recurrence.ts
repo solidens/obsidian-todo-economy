@@ -10,6 +10,7 @@
  * после того, как вернулся, а не три просроченные разом.
  */
 
+import { t as L } from './i18n';
 import { addDays, daysBetween } from './time';
 import type { Task } from './types';
 
@@ -80,6 +81,26 @@ const REPEAT_RULES: Array<[RegExp, number]> = [
 	[/каждое\s+утро/, 1],
 	[/каждый\s+вечер/, 1],
 	[/по\s+вечерам/, 1],
+
+	// Английские правила живут в том же списке, а не за переключателем языка:
+	// они не пересекаются с русскими, а человек с английским интерфейсом всё
+	// равно порой пишет задачи по-русски, и наоборот.
+	[/every\s+other\s+day/, 2],
+	[/every\s+second\s+day/, 2],
+	[/(?:every\s+two|every\s+2)\s+weeks?/, 14],
+	[/(?:bi-?weekly|fortnightly)/, 14],
+	[/every\s+week/, 7],
+	[/once\s+a\s+week/, 7],
+	[/weekly/, 7],
+	[/every\s+month/, 30],
+	[/once\s+a\s+month/, 30],
+	[/monthly/, 30],
+	[/every\s+day/, 1],
+	[/each\s+day/, 1],
+	[/daily/, 1],
+	[/every\s+morning/, 1],
+	[/every\s+evening/, 1],
+	[/every\s+night/, 1],
 ];
 
 const NUMERIC_RULES: Array<[RegExp, (n: number) => number]> = [
@@ -89,6 +110,10 @@ const NUMERIC_RULES: Array<[RegExp, (n: number) => number]> = [
 	[/кажды[ех]\s+(\d{1,3})\s*(?:дн(?:я|ей|ь)|д)(?![а-я])/, (n) => n],
 	[/раз\s+в\s+(\d{1,2})\s*недел/, (n) => n * 7],
 	[/(\d{1,3})\s*раза?\s+в\s+недел/, (n) => Math.max(1, Math.round(7 / n))],
+	[/every\s+(\d{1,3})\s*days?\b/, (n) => n],
+	[/once\s+(?:in\s+)?(?:every\s+)?(\d{1,3})\s*days?\b/, (n) => n],
+	[/every\s+(\d{1,2})\s*weeks?\b/, (n) => n * 7],
+	[/(\d{1,3})\s*times?\s+a\s+week\b/, (n) => Math.max(1, Math.round(7 / n))],
 ];
 
 export function detectRepeat(text: unknown): number | undefined {
@@ -106,18 +131,18 @@ export function detectRepeat(text: unknown): number | undefined {
 
 export function describeRepeat(days: number | undefined): string {
 	if (!days) return '';
-	if (days === 1) return 'каждый день';
-	if (days === 2) return 'через день';
-	if (days === 7) return 'раз в неделю';
-	if (days === 14) return 'раз в две недели';
-	if (days % 7 === 0) return `раз в ${days / 7} нед.`;
-	return `раз в ${days} дн.`;
+	if (days === 1) return L().repEveryDay;
+	if (days === 2) return L().repEveryOther;
+	if (days === 7) return L().repWeekly;
+	if (days === 14) return L().repBiweekly;
+	if (days % 7 === 0) return L().repWeeks(days / 7);
+	return L().repDays(days);
 }
 
 /** Короткая пометка для строки в панели. */
 export function repeatBadge(days: number | undefined): string {
 	if (!days) return '';
-	if (days === 1) return 'ежедн.';
-	if (days % 7 === 0) return `${days / 7}нед`;
-	return `${days}дн`;
+	if (days === 1) return L().badgeDaily;
+	if (days % 7 === 0) return L().badgeWeeks(days / 7);
+	return L().badgeDays(days);
 }

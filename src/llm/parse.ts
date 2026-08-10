@@ -3,6 +3,8 @@
  * тестами без сети и без Obsidian.
  */
 
+import { t as L } from '../core/i18n';
+
 /** Ключ OpenRouter принимается только по форме — мусор из поля ввода не поедет в заголовок. */
 export const KEY_RE = /^sk-or-v1-[A-Za-z0-9._-]{20,}$/;
 export const isValidKey = (k: string): boolean => KEY_RE.test(k.trim());
@@ -74,16 +76,16 @@ export type Outcome<T> =
 /** Понятная человеку причина по коду статуса. Текст провайдера наружу не идёт. */
 export function messageForStatus(status: number): { retry: boolean; message: string } {
 	if (status === 401 || status === 403) {
-		return { retry: false, message: 'Ключ не принят. Проверь его в настройках плагина.' };
+		return { retry: false, message: L().keyRejected };
 	}
 	if (status === 402) {
-		return { retry: false, message: 'Квота ключа исчерпана. Пополни счёт OpenRouter или подожди сутки.' };
+		return { retry: false, message: L().keyOutOfQuota };
 	}
 	if (status === 429) {
-		return { retry: true, message: 'Модель упёрлась в лимит.' };
+		return { retry: true, message: L().rateLimited };
 	}
 	if (status >= 500) {
-		return { retry: true, message: 'Провайдер не отвечает.' };
+		return { retry: true, message: L().providerDown };
 	}
-	return { retry: true, message: `Запрос не прошёл (${status}).` };
+	return { retry: true, message: L().requestFailed(status) };
 }

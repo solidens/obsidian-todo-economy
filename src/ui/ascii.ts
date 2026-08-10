@@ -21,6 +21,8 @@
  * он честен: длина полосок и порог компактной раскладки.
  */
 
+import { t as L } from '../core/i18n';
+
 /* ── набор псевдографики ───────────────────────────────────────────────── */
 
 export interface Glyphs {
@@ -340,7 +342,7 @@ const LATIN_WIDE = ['m', 'M', 'w', 'W'];
 /** Их кириллические родственники — какие именно расширены, у шрифтов расходится. */
 const CYRILLIC_WIDE = ['м', 'ш', 'щ', 'ж', 'ы', 'М', 'Ш', 'Щ', 'Ж'];
 const NARROW = ['i', 'l', '.', 'j'];
-export const PROSE_SAMPLE = 'обычныйтекстзадачидляоценкисреднейшириныбуквы';
+export const proseSample = (): string => L().proseSample;
 
 const near = (a: number, b: number, tol = 0.02) => Math.abs(a / b - 1) <= tol;
 
@@ -377,7 +379,7 @@ export function probeFont(host: HTMLElement, glyphs: Glyphs): FontProfile {
 
 		const { kind, wide } = classify(sample);
 		const cell = sample['0'] || 8;
-		const prose = m.of(PROSE_SAMPLE) || cell;
+		const prose = m.of(proseSample()) || cell;
 
 		// Псевдографику проверяем на согласованность с ячейкой: если шрифт её
 		// не содержит, подставится другое семейство — и поедет и вширь, и ввысь.
@@ -416,9 +418,9 @@ export function pickGlyphs(mode: GlyphMode, gridSafe: boolean): Glyphs {
 /** Человеческое описание профиля — для настроек. */
 export function describeFont(p: FontProfile): string {
 	const kind =
-		p.kind === 'mono' ? 'моноширинный' :
-		p.kind === 'duo' ? 'дуоспейсный' : 'пропорциональный';
-	const wide = p.wide.length ? `, шире ячейки: ${p.wide.join(' ')}` : '';
-	const frame = p.gridSafe ? 'псевдографика своя' : 'псевдографика подставная — включён ASCII';
-	return `${kind}, ячейка ${p.cell.toFixed(1)} px${wide}. ${frame}.`;
+		p.kind === 'mono' ? L().fontMono :
+		p.kind === 'duo' ? L().fontDuo : L().fontProportional;
+	const wide = p.wide.length ? L().fontWider(p.wide.join(' ')) : '';
+	const frame = p.gridSafe ? L().frameOwn : L().frameFallback;
+	return L().fontSummary(kind, p.cell.toFixed(1), wide, frame);
 }

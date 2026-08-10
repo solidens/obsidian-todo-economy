@@ -12,6 +12,7 @@
 import { Notice, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from 'obsidian';
 import { Brain } from './brain';
 import { penalize, rollover } from './core/ledger';
+import { resolveLang, setLang, t as L } from './core/i18n';
 import { dayKey } from './core/time';
 import { EconomySettingsTab } from './settings';
 import { Store } from './store';
@@ -25,6 +26,7 @@ export default class TodoEconomyPlugin extends Plugin {
 		this.store = new Store(this);
 		this.brain = new Brain(this.store);
 		await this.store.load();
+		this.applyLang();
 
 		this.registerView(VIEW_TYPE, (leaf: WorkspaceLeaf) => new EconomyView(leaf, this.store, this.brain));
 		this.addRibbonIcon('target', 'Todo Economy', () => void this.activate());
@@ -86,7 +88,7 @@ export default class TodoEconomyPlugin extends Plugin {
 		await this.store.refreshTasks();
 		const back = await this.store.rollRecurring();
 		this.sweepOverdue();
-		if (back > 0) new Notice(`Todo Economy: снова открыто задач: ${back}`);
+		if (back > 0) new Notice(L().reopened(back));
 	}
 
 	private async newDay(today: string): Promise<void> {
@@ -96,25 +98,42 @@ export default class TodoEconomyPlugin extends Plugin {
 		this.store.save();
 	}
 
+	/**
+	 * Язык выбирается один раз при загрузке и при смене настройки. Obsidian
+	 * держит выбранный язык в localStorage под ключом `language`; для
+	 * английского ключа может не быть вовсе, и это ровно тот случай, когда
+	 * английский и нужен.
+	 */
+	applyLang(): void {
+		let locale: string | null = null;
+		try {
+			locale = window.localStorage.getItem('language');
+		} catch {
+			locale = null;
+		}
+		setLang(resolveLang(this.store.state.langPref, locale));
+		this.refitViews();
+	}
+
 	private addCommands(): void {
 		this.addCommand({
 			id: 'open-panel',
-			name: 'Открыть панель',
+			name: L().cmdOpenPanel,
 			callback: () => void this.activate(),
 		});
 		this.addCommand({
 			id: 'open-tasks-file',
-			name: 'Открыть файл задач',
+			name: L().cmdOpenFile,
 			callback: () => void this.openTasksFile(),
 		});
 		this.addCommand({
 			id: 'refresh-tasks',
-			name: 'Перечитать файл задач',
+			name: L().cmdRefresh,
 			callback: () => void this.bootstrap(),
 		});
 		this.addCommand({
 			id: 'restart-onboarding',
-			name: 'Пройти онбординг заново',
+			name: L().cmdRestartOnboarding,
 			callback: () => {
 				const s = this.store.state;
 				s.onboarded = false;
@@ -138,7 +157,7 @@ export default class TodoEconomyPlugin extends Plugin {
 			total += penalize(this.store.state, t, today);
 		}
 		if (total > 0) {
-			new Notice(`Todo Economy: −${total} за просроченное`);
+			new Notice(L().penalized(total));
 			this.store.save();
 		}
 	}

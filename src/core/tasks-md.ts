@@ -13,6 +13,7 @@
  */
 
 import { sane } from './economy';
+import { t as L } from './i18n';
 import type { Task } from './types';
 
 export interface ParsedTask extends Task {
@@ -172,8 +173,7 @@ export function removeLine(text: string, line: number): string {
 
 const STATE_LANG = 'te-state';
 const STATE_FENCE_RE = /^\s*(```|~~~)(\S*)\s*$/;
-const STATE_COMMENT =
-	'<!-- служебный блок плагина Todo Economy: баланс, награды, история, серия — руками лучше не трогать -->';
+
 
 /**
  * Баланс, награды, экономика, серия и история покупок хранятся тем же
@@ -226,14 +226,8 @@ export function writeState(text: string, jsonText: string): string {
 	}
 
 	while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
-	lines.push('', STATE_COMMENT, ...block, '');
+	lines.push('', L().stateComment, ...block, '');
 	return lines.join('\n');
 }
 
-export const STARTER_FILE = `# ТУДУ
-
-Задачи — обычные галочки. Плашка в конце строки хранит оценку в минутах,
-сложность и приоритет; её можно править руками, а можно не трогать вовсе.
-Написал голую галочку — плагин допишет плашку сам.
-
-`;
+export const starterFile = (): string => L().starterFile;

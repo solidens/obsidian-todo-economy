@@ -3,6 +3,8 @@
  * тестируется обычным `node --test` без запуска приложения.
  */
 
+import type { LangPref } from './i18n';
+
 export type RewardKind = 'normal' | 'restore' | 'harmful';
 
 /** Задача. Живёт строкой в одном markdown-файле, см. tasks-file.ts. */
@@ -122,13 +124,16 @@ export interface State {
 	panelFont: string;
 	/** Псевдографика: авто выбирает по замерам шрифта. */
 	glyphMode: 'auto' | 'unicode' | 'ascii';
+	/** Язык интерфейса: авто следует за локалью Obsidian. */
+	langPref: LangPref;
 }
 
 export const DEFAULT_STATE: State = {
 	version: 1,
 	onboarded: false,
 	onboardStep: 'key',
-	tasksFile: 'ТУДУ.md',
+	// пусто — имя берётся из локали при первом обращении
+	tasksFile: '',
 	economy: { k: 0, monthlyIncome: 0, dayCap: 200, softCap: 900, tune: 1 },
 	rewards: [],
 	balance: 0,
@@ -144,4 +149,5 @@ export const DEFAULT_STATE: State = {
 	lastModel: null,
 	panelFont: '',
 	glyphMode: 'auto',
+	langPref: 'auto',
 };

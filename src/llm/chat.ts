@@ -4,6 +4,7 @@
  */
 
 import { requestUrl } from 'obsidian';
+import { t as L } from '../core/i18n';
 import { benchModel, pickModels } from './models';
 import { messageForStatus, scrubSecrets, type Outcome } from './parse';
 
@@ -58,7 +59,7 @@ async function askOne(key: string, model: string, messages: Msg[]): Promise<Atte
 			TIMEOUT,
 		);
 	} catch {
-		return { kind: 'retry', message: 'Модель не ответила вовремя.' };
+		return { kind: 'retry', message: L().modelSlow };
 	}
 
 	if (res.status < 200 || res.status >= 300) {
@@ -70,17 +71,17 @@ async function askOne(key: string, model: string, messages: Msg[]): Promise<Atte
 	try {
 		parsed = res.json;
 	} catch {
-		return { kind: 'retry', message: 'Модель прислала не JSON.' };
+		return { kind: 'retry', message: L().modelNotJson };
 	}
-	if (!parsed || typeof parsed !== 'object') return { kind: 'retry', message: 'Модель прислала не JSON.' };
+	if (!parsed || typeof parsed !== 'object') return { kind: 'retry', message: L().modelNotJson };
 	const body = parsed as Record<string, unknown>;
 
 	// 200 с полем error — тоже авария: провайдер иногда отвечает так
-	if (body.error) return { kind: 'retry', message: 'Модель вернула ошибку.' };
+	if (body.error) return { kind: 'retry', message: L().modelError };
 
 	const choices = body.choices as Array<{ message?: { content?: string } }> | undefined;
 	const text = choices?.[0]?.message?.content ?? '';
-	if (!text.trim()) return { kind: 'retry', message: 'Модель прислала пустой ответ.' };
+	if (!text.trim()) return { kind: 'retry', message: L().modelEmpty };
 
 	return { kind: 'ok', text };
 }
@@ -92,7 +93,7 @@ async function askOne(key: string, model: string, messages: Msg[]): Promise<Atte
  */
 export async function ask(key: string, messages: Msg[]): Promise<Outcome<string>> {
 	const queue = await pickModels();
-	let last = 'Ни одна модель не ответила.';
+	let last = L().noModelAnswered;
 
 	for (const model of queue) {
 		const a = await askOne(key, model, messages);

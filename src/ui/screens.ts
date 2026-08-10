@@ -7,6 +7,7 @@
 import { award, effectiveK, price, streakMult } from '../core/economy';
 import { checkBuy } from '../core/ledger';
 import { nextDue, repeatBadge } from '../core/recurrence';
+import { t as tr } from '../core/i18n';
 import { mmss } from '../core/time';
 import type { Store } from '../store';
 import * as A from './ascii';
@@ -35,24 +36,23 @@ export interface Ctx {
 }
 
 const COMPACT_AT = 46;
-const TITLE = 'ТУДУ · ЭКОНОМИКА';
 
 /* ── шапка ──────────────────────────────────────────────────────────────── */
 
 function head(c: Ctx): Line[] {
-	const tabs: Array<[Tab, string]> = [['goals', 'ЦЕЛИ'], ['rewards', 'НАГРАДЫ'], ['chat', 'ЧАТ']];
+	const tabs: Array<[Tab, string]> = [['goals', tr().tabGoals], ['rewards', tr().tabRewards], ['chat', tr().tabChat]];
 	const left: Seg[] = [];
 	tabs.forEach(([id, label], i) => {
 		if (i) left.push(S('  ', 'te-faint'));
 		const on = c.tab === id;
-		left.push(H(on ? `[ ${label} ]` : ` ${label} `, `tab:${id}`, on ? 'te-acc' : 'te-dim', `вкладка ${label}`));
+		left.push(H(on ? `[ ${label} ]` : ` ${label} `, `tab:${id}`, on ? 'te-acc' : 'te-dim', tr().tabHint(label)));
 	});
 	const right: Seg[] = [
 		S(`${c.g.bolt} `, 'te-faint'),
 		S(String(c.store.state.balance), 'te-acc'),
-		S(c.cols >= COMPACT_AT ? ' баллов' : '', 'te-dim'),
+		S(c.cols >= COMPACT_AT ? tr().points : '', 'te-dim'),
 	];
-	return [A.top(TITLE, c.g), A.split(left, right, c.g), A.sep(c.g)];
+	return [A.top(tr().title, c.g), A.split(left, right, c.g), A.sep(c.g)];
 }
 
 /* ── цели ───────────────────────────────────────────────────────────────── */
@@ -64,17 +64,17 @@ function screenGoals(c: Ctx): Line[] {
 	const L: Line[] = head(c);
 
 	if (store.missing) {
-		L.push(A.row([S('Файла задач ещё нет.', 'te-dim')], g));
+		L.push(A.row([S(tr().noFile, 'te-dim')], g));
 		L.push(A.row([], g));
-		L.push(A.row([S('  '), H(`[ создать ${store.filePath} ]`, 'create', 'te-acc')], g));
+		L.push(A.row([S('  '), H(tr().createFile(store.filePath), 'create', 'te-acc')], g));
 		L.push(A.bot(g));
 		return L;
 	}
 
 	if (!store.tasks.length) {
-		L.push(A.row([S('Пусто. Напиши задачу в чат — или галочкой в файле.', 'te-dim')], g));
+		L.push(A.row([S(tr().emptyTasks, 'te-dim')], g));
 		L.push(A.row([], g));
-		L.push(A.row([S('  '), H('[ открыть файл ]', 'open', 'te-dim')], g));
+		L.push(A.row([S('  '), H(tr().openFile, 'open', 'te-dim')], g));
 		L.push(A.bot(g));
 		return L;
 	}
@@ -91,7 +91,7 @@ function screenGoals(c: Ctx): Line[] {
 		const left: Seg[] = [
 			H(overdue ? '[!]' : t.done ? '[x]' : '[ ]', `toggle:${t.id}`,
 				overdue ? 'te-bad' : t.done ? 'te-good' : '',
-				`${t.done ? 'снять' : 'закрыть'} задачу «${t.title}»`),
+				tr().toggleHint(t.done, t.title)),
 			S(' '),
 			S(t.title, t.done ? 'te-strike' : overdue ? 'te-warn' : ''),
 		];
@@ -103,31 +103,31 @@ function screenGoals(c: Ctx): Line[] {
 		if (t.done) {
 			// повторяющаяся остаётся закрытой до конца суток — видно, что сделал
 			if (t.repeat && t.doneOn) {
-				L.push(A.row([S(`    вернётся ${nextDue(t, t.doneOn)}`, 'te-faint')], g));
+				L.push(A.row([S(tr().returnsOn(nextDue(t, t.doneOn)), 'te-faint')], g));
 			}
 			continue;
 		}
 
 		if (!compact) {
-			const meta = `    ${t.min} мин · ${A.bar(t.diff, 2, 6, g)} · ${g.warn.repeat(Math.max(1, Math.round(t.prio)))}`;
+			const meta = `    ${t.min} ${tr().minutes} · ${A.bar(t.diff, 2, 6, g)} · ${g.warn.repeat(Math.max(1, Math.round(t.prio)))}`;
 			L.push(A.row([
 				S(meta, 'te-faint'),
 				S(t.repeat ? `  ${repeatBadge(t.repeat)}` : '', 'te-dim'),
-				S(t.due && !t.repeat ? `  до ${t.due}` : '', overdue ? 'te-bad' : 'te-faint'),
+				S(t.due && !t.repeat ? tr().dueBy(t.due) : '', overdue ? 'te-bad' : 'te-faint'),
 			], g));
 		}
 
 		const focused = c.pomo.taskId === t.id;
 		const act: Seg[] = [
 			S('    '),
-			H(focused && c.pomo.running ? `${g.arrow} пауза` : `${g.arrow} фокус`, `focus:${t.id}`,
-				focused ? 'te-acc' : 'te-dim', `помодоро для «${t.title}»`),
+			H(`${g.arrow} ${focused && c.pomo.running ? tr().pause : tr().focus}`, `focus:${t.id}`,
+				focused ? 'te-acc' : 'te-dim', tr().focusHint(t.title)),
 		];
 		if (focused) {
 			const total = c.pomo.rest ? 300 : 1500;
 			act.push(S(`  ${mmss(c.pomo.left)} `, c.pomo.rest ? 'te-good' : 'te-acc'));
 			act.push(S(A.bar(total - c.pomo.left, total, compact ? 6 : 12, g), 'te-faint'));
-			act.push(S('  '), H(g.cross, `stop:${t.id}`, 'te-faint', 'сбросить помодоро'));
+			act.push(S('  '), H(g.cross, `stop:${t.id}`, 'te-faint', tr().resetPomo));
 		}
 		L.push(A.row(act, g));
 		L.push(A.row([], g));
@@ -136,11 +136,11 @@ function screenGoals(c: Ctx): Line[] {
 	L.push(A.sep(g));
 	const cap = s.economy.dayCap;
 	L.push(A.split(
-		[S('сегодня  ', 'te-dim'), S(A.bar(s.day.earned, cap, compact ? 10 : 20, g), s.day.earned >= cap ? 'te-warn' : 'te-good')],
+		[S(tr().today, 'te-dim'), S(A.bar(s.day.earned, cap, compact ? 10 : 20, g), s.day.earned >= cap ? 'te-warn' : 'te-good')],
 		[S(`${s.day.earned} / ${cap}`, 'te-dim')], g));
 	L.push(A.split(
-		[S('серия    ', 'te-dim'), S(A.dots(s.streak.days, 7, g), 'te-good')],
-		[S(`${s.streak.days} дн  ×${streakMult(s.streak.days).toFixed(2)}`, 'te-dim')], g));
+		[S(tr().streak, 'te-dim'), S(A.dots(s.streak.days, 7, g), 'te-good')],
+		[S(tr().streakDays(s.streak.days, streakMult(s.streak.days).toFixed(2)), 'te-dim')], g));
 	L.push(A.bot(g));
 	return L;
 }
@@ -153,7 +153,7 @@ function screenRewards(c: Ctx): Line[] {
 	const L: Line[] = head(c);
 
 	if (!s.rewards.length) {
-		L.push(A.row([S('Наград пока нет. Расскажи о них в чате.', 'te-dim')], g));
+		L.push(A.row([S(tr().noRewards, 'te-dim')], g));
 		L.push(A.bot(g));
 		return L;
 	}
@@ -170,7 +170,7 @@ function screenRewards(c: Ctx): Line[] {
 			S(tag, r.kind === 'harmful' ? 'te-bad' : 'te-good'),
 		];
 		const right: Seg[] = chk.ok
-			? [S(`${chk.price}  `, 'te-dim'), H('[ КУПИТЬ ]', `buy:${r.id}`, 'te-acc', `купить «${r.title}» за ${chk.price}`)]
+			? [S(`${chk.price}  `, 'te-dim'), H(tr().buy, `buy:${r.id}`, 'te-acc', tr().buyHint(r.title, chk.price))]
 			: [S(`${chk.price}  `, 'te-faint'), S(g.cross, 'te-faint')];
 		L.push(A.split(left, right, g));
 		if (!chk.ok) L.push(A.row([S(`  └ ${chk.reason}`, 'te-faint')], g));
@@ -179,7 +179,7 @@ function screenRewards(c: Ctx): Line[] {
 	L.push(A.sep(g));
 	L.push(A.split(
 		[S(`k = ${effectiveK(s.economy).toFixed(1)}${s.economy.tune !== 1 ? ` (×${s.economy.tune})` : ''}`, 'te-faint')],
-		[S(`приход ≈ ${s.economy.monthlyIncome}/мес`, 'te-faint')], g));
+		[S(tr().incomeShort(s.economy.monthlyIncome), 'te-faint')], g));
 	L.push(A.bot(g));
 	return L;
 }
@@ -195,7 +195,7 @@ function screenChat(c: Ctx): Line[] {
 	const L: Line[] = head(c);
 
 	const shown = s.chat.slice(-24);
-	if (!shown.length) L.push(A.row([S('Пусто.', 'te-faint')], g));
+	if (!shown.length) L.push(A.row([S(tr().chatEmpty, 'te-faint')], g));
 
 	for (const m of shown) {
 		for (const [i, ln] of A.wrap(m.text, textCols - 2).entries()) {
@@ -204,7 +204,7 @@ function screenChat(c: Ctx): Line[] {
 		L.push(A.row([], g));
 	}
 
-	if (c.busy) L.push(A.row([S('  думает…', 'te-faint')], g));
+	if (c.busy) L.push(A.row([S(tr().thinking, 'te-faint')], g));
 
 	L.push(A.sep(g));
 	L.push(A.row([S('› ', 'te-acc'), IN('compose', '', hint(store)), GAP], g));
@@ -213,7 +213,7 @@ function screenChat(c: Ctx): Line[] {
 }
 
 const hint = (store: Store) =>
-	store.state.onboarded ? 'завтра дожать отчёт, часа полтора' : 'ответь как есть';
+	store.state.onboarded ? tr().composeHint : tr().composeHintOnboard;
 
 /* ── подвал с моделью ───────────────────────────────────────────────────── */
 

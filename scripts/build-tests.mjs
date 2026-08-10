@@ -41,11 +41,16 @@ await esbuild.build({
 		'src/core/rebalance.ts',
 		'src/core/intake.ts',
 		'src/core/time.ts',
+		'src/core/i18n.ts',
 		'src/llm/parse.ts',
 		'src/ui/ascii.ts',
 	],
 	outdir: '.test-build',
 	external: ['obsidian'],
+	// Без splitting каждый вход получил бы свою копию i18n, и `setLang` из
+	// теста не влиял бы на строки внутри соседнего модуля.
+	splitting: true,
+	chunkNames: 'shared/[name]-[hash]',
 });
 
 await esbuild.build({

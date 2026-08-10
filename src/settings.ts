@@ -4,6 +4,7 @@ import {
 	price, solveK, suggestDayCap, suggestSoftCap,
 } from './core/economy';
 import { rebalance } from './core/rebalance';
+import { t as L, type LangPref } from './core/i18n';
 import { isValidKey } from './llm/parse';
 import { resetModelCache } from './llm/models';
 import { describeFont, GLYPH_SETS, probeFont } from './ui/ascii';
@@ -38,7 +39,7 @@ export class EconomySettingsTab extends PluginSettingTab {
 		try {
 			text = describeFont(probeFont(probe, GLYPH_SETS.unicode));
 		} catch {
-			text = 'Не удалось обмерить шрифт.';
+			text = L().fontMeasureFailed;
 		}
 		probe.remove();
 		el.setText(text);
@@ -51,11 +52,8 @@ export class EconomySettingsTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Ключ OpenRouter')
-			.setDesc(
-				'Бесплатный и без карты: openrouter.ai/settings/keys. Ключ хранится на этом ' +
-				'устройстве и не уезжает вместе с хранилищем — на втором устройстве его нужно ввести заново.',
-			)
+			.setName(L().setKey)
+			.setDesc(L().setKeyDesc)
 			.addText((t) => {
 				t.inputEl.type = 'password';
 				t.setPlaceholder('sk-or-v1-…')
@@ -66,30 +64,41 @@ export class EconomySettingsTab extends PluginSettingTab {
 					});
 				t.inputEl.addEventListener('blur', () => {
 					const k = t.getValue().trim();
-					if (k && !isValidKey(k)) new Notice('Это не похоже на ключ OpenRouter (sk-or-v1-…)');
+					if (k && !isValidKey(k)) new Notice(L().setKeyBad);
 				});
 			});
 
 		new Setting(containerEl)
-			.setName('Файл задач')
-			.setDesc('Один markdown-файл на всё. Плагин не создаёт других заметок.')
+			.setName(L().setFile)
+			.setDesc(L().setFileDesc)
 			.addText((t) =>
-				t.setPlaceholder('ТУДУ.md')
+				t.setPlaceholder(L().defaultFileName)
 					.setValue(s.tasksFile)
 					.onChange((v) => {
-						s.tasksFile = v.trim() || 'ТУДУ.md';
+						s.tasksFile = v.trim();
 						store.save();
 						void store.refreshTasks();
 					}),
 			);
 
 		new Setting(containerEl)
-			.setName('Строгий режим')
-			.setDesc(
-				'Восстановительные награды — сон, прогулка, отдых — по умолчанию не требуют закрытой ' +
-				'задачи. В плохой день человек не закрывает задачи именно потому, что вымотан, и ' +
-				'система, которая в этот момент запрещает отдохнуть, добивает вместо того, чтобы вытаскивать.',
-			)
+			.setName(L().setLang)
+			.setDesc(L().setLangDesc)
+			.addDropdown((d) =>
+				d.addOptions({ auto: L().setLangAuto, ru: 'Русский', en: 'English' })
+					.setValue(s.langPref)
+					.onChange((v) => {
+						s.langPref = v as LangPref;
+						store.save();
+						this.plugin.applyLang();
+						this.display();
+						new Notice(L().setLangChanged);
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName(L().setStrict)
+			.setDesc(L().setStrictDesc)
 			.addToggle((t) =>
 				t.setValue(s.strictRestore).onChange((v) => {
 					s.strictRestore = v;
@@ -97,15 +106,11 @@ export class EconomySettingsTab extends PluginSettingTab {
 				}),
 			);
 
-		new Setting(containerEl).setName('Панель').setHeading();
+		new Setting(containerEl).setName(L().setPanel).setHeading();
 
 		new Setting(containerEl)
-			.setName('Шрифт панели')
-			.setDesc(
-				'Пусто — брать моноширинный шрифт из настроек Obsidian. Выравнивание держится ' +
-				'на разметке, а не на подсчёте символов, поэтому годится и дуоспейсный шрифт: ' +
-				'iA Writer Duo S, где m и w в полтора раза шире прочих, рисуется ровно.',
-			)
+			.setName(L().setFont)
+			.setDesc(L().setFontDesc)
 			.addText((t) =>
 				t.setPlaceholder('iA Writer Mono S')
 					.setValue(s.panelFont)
@@ -121,14 +126,10 @@ export class EconomySettingsTab extends PluginSettingTab {
 		this.refreshFontNote();
 
 		new Setting(containerEl)
-			.setName('Псевдографика')
-			.setDesc(
-				'Авто проверяет, держит ли шрифт ширину ячейки на ─ │ █ ░. Если этих символов ' +
-				'в нём нет, они подставляются из чужого семейства и разъезжаются — тогда панель ' +
-				'сама переходит на ASCII. Видишь пустые квадраты — поставь ASCII вручную.',
-			)
+			.setName(L().setGlyphs)
+			.setDesc(L().setGlyphsDesc)
 			.addDropdown((d) =>
-				d.addOptions({ auto: 'авто', unicode: 'юникод', ascii: 'ASCII' })
+				d.addOptions({ auto: L().setGlyphsAuto, unicode: L().setGlyphsUnicode, ascii: 'ASCII' })
 					.setValue(s.glyphMode)
 					.onChange((v) => {
 						s.glyphMode = v as State['glyphMode'];
@@ -138,10 +139,10 @@ export class EconomySettingsTab extends PluginSettingTab {
 					}),
 			);
 
-		new Setting(containerEl).setName('Экономика').setHeading();
+		new Setting(containerEl).setName(L().setEconomy).setHeading();
 
 		new Setting(containerEl)
-			.setName('Потолок начислений за день')
+			.setName(L().setDayCap)
 			.addText((t) =>
 				t.setValue(String(s.economy.dayCap)).onChange((v) => {
 					const n = Number(v);
@@ -153,8 +154,8 @@ export class EconomySettingsTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Порог сгорания')
-			.setDesc('Выше этого баланса излишек тает на 5 % в день. Без него накопленное однажды оплачивает неделю саморазрушения.')
+			.setName(L().setSoftCap)
+			.setDesc(L().setSoftCapDesc)
 			.addText((t) =>
 				t.setValue(String(s.economy.softCap)).onChange((v) => {
 					const n = Number(v);
@@ -168,30 +169,27 @@ export class EconomySettingsTab extends PluginSettingTab {
 		const fact = incomeFromHistory(s.history);
 
 		new Setting(containerEl)
-			.setName('Пересчитать по факту')
+			.setName(L().setResolve)
 			.setDesc(
 				fact
-					? `За ${fact.spanDays} дн. ты зарабатываешь ${fact.monthly}/мес, а система считает по ` +
-						`${s.economy.monthlyIncome}/мес из онбординга. Пересчёт заново решит k по фактическому ` +
-						'приходу и уберёт ручную поправку.'
-					: `Нужно хотя бы ${MIN_SPAN_DAYS} дней закрытых задач. Пока данных мало — можно пересчитать ` +
-						'по оценке из онбординга.',
+					? L().setResolveFact(fact.spanDays, fact.monthly, s.economy.monthlyIncome)
+					: L().setResolveThin(MIN_SPAN_DAYS),
 			)
 			.addButton((b) =>
-				b.setButtonText(fact ? 'По факту' : 'По оценке').onClick(() => {
+				b.setButtonText(fact ? L().setResolveByFact : L().setResolveByGuess).onClick(() => {
 					if (!s.rewards.length) {
-						new Notice('Нечего пересчитывать: нет наград.');
+						new Notice(L().setNoRewards);
 						return;
 					}
 					if (fact) {
 						const r = rebalance(s, 'solve');
 						store.save();
 						this.display();
-						new Notice(r.applied ? `Приход ≈ ${s.economy.monthlyIncome}/мес по факту.` : r.report);
+						new Notice(r.applied ? L().setIncomeFact(s.economy.monthlyIncome) : r.report);
 						return;
 					}
 					if (!s.profile) {
-						new Notice('Нечего пересчитывать: нет профиля.');
+						new Notice(L().setNoProfile);
 						return;
 					}
 					const income = estimateMonthlyIncome(s.profile);
@@ -204,20 +202,16 @@ export class EconomySettingsTab extends PluginSettingTab {
 					};
 					store.save();
 					this.display();
-					new Notice(`Готово. Приход ≈ ${income} баллов в месяц.`);
+					new Notice(L().setIncomeDone(income));
 				}),
 			);
 
 		if (s.economy.tune !== 1) {
 			new Setting(containerEl)
-				.setName('Ручная поправка к ценам')
-				.setDesc(
-					`Сейчас ×${s.economy.tune}. Она появляется, когда просишь в чате сделать дешевле или ` +
-					'дороже. Пока поправка не равна единице, цены не решены, а подкручены — пересчёт по ' +
-					'факту вернёт их к честным.',
-				)
+				.setName(L().setTune)
+				.setDesc(L().setTuneDesc(s.economy.tune))
 				.addButton((b) =>
-					b.setButtonText('Убрать').onClick(() => {
+					b.setButtonText(L().setTuneDrop).onClick(() => {
 						s.economy.tune = 1;
 						store.save();
 						this.display();
@@ -228,11 +222,11 @@ export class EconomySettingsTab extends PluginSettingTab {
 		if (s.rewards.length) {
 			const list = containerEl.createEl('ul', { cls: 'te-settings-list' });
 			for (const r of s.rewards.slice().sort((a, b) => price(a, effectiveK(s.economy)) - price(b, effectiveK(s.economy)))) {
-				const tag = r.kind === 'harmful' ? ' · вредное' : r.kind === 'restore' ? ' · восстановление' : '';
-				const cap = r.weeklyCap ? `, ≤${r.weeklyCap}/нед` : '';
+				const tag = r.kind === 'harmful' ? L().tagHarmful : r.kind === 'restore' ? L().tagRestore : '';
+				const cap = r.weeklyCap ? L().perWeekShort(r.weeklyCap) : '';
 				const li = list.createEl('li');
 				li.createSpan({ text: `${price(r, effectiveK(s.economy))}  ${r.title}${tag}${cap}` });
-				li.createEl('button', { text: 'убрать' }).addEventListener('click', () => {
+				li.createEl('button', { text: L().setRemove }).addEventListener('click', () => {
 					s.rewards = s.rewards.filter((x) => x.id !== r.id);
 					store.save();
 					this.display();
@@ -240,23 +234,23 @@ export class EconomySettingsTab extends PluginSettingTab {
 			}
 		}
 
-		new Setting(containerEl).setName('Обслуживание').setHeading();
+		new Setting(containerEl).setName(L().setMaintenance).setHeading();
 
 		new Setting(containerEl)
-			.setName('Модель')
-			.setDesc(s.lastModel ? `Последней отвечала ${s.lastModel}` : 'Пока никто не отвечал.')
+			.setName(L().setModel)
+			.setDesc(s.lastModel ? L().setModelLast(s.lastModel) : L().setModelNone)
 			.addButton((b) =>
-				b.setButtonText('Сбросить кэш моделей').onClick(() => {
+				b.setButtonText(L().setModelReset).onClick(() => {
 					resetModelCache();
-					new Notice('Рейтинг моделей будет запрошен заново.');
+					new Notice(L().setModelResetDone);
 				}),
 			);
 
 		new Setting(containerEl)
-			.setName('Пройти онбординг заново')
-			.setDesc('Сотрёт профиль, награды и переписку. Баланс, задачи и история покупок останутся.')
+			.setName(L().setRestart)
+			.setDesc(L().setRestartDesc)
 			.addButton((b) =>
-				b.setWarning().setButtonText('Начать заново').onClick(() => {
+				b.setWarning().setButtonText(L().setRestartGo).onClick(() => {
 					s.onboarded = false;
 					s.onboardStep = isValidKey(store.apiKey) ? 'workday' : 'key';
 					s.profile = null;
@@ -264,7 +258,7 @@ export class EconomySettingsTab extends PluginSettingTab {
 					s.chat = [];
 					store.save();
 					this.display();
-					new Notice('Открой панель — чат начнёт сначала.');
+					new Notice(L().setRestartDone);
 				}),
 			);
 	}

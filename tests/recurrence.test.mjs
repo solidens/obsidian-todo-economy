@@ -144,3 +144,17 @@ test('разовое дело интервала не получает', () => {
 test('ё не мешает разбору', () => {
 	assert.equal(detectRepeat('ЕЖЕДНЕВНО гулять'), 1);
 });
+
+/* ── регулярность по-английски ─────────────────────────────────────────── */
+
+test('английские фразы тоже дают интервал', () => {
+	assert.equal(detectRepeat('read every day for 30 minutes'), 1);
+	assert.equal(detectRepeat('Morning workout, daily'), 1);
+	assert.equal(detectRepeat('gym every other day'), 2);
+	assert.equal(detectRepeat('clean the flat weekly'), 7);
+	assert.equal(detectRepeat('call mum every two weeks'), 14);
+	assert.equal(detectRepeat('water the plants every 3 days'), 3);
+	assert.equal(detectRepeat('swim 2 times a week'), 4);
+	assert.equal(detectRepeat('pay rent monthly'), 30);
+	assert.equal(detectRepeat('finish the report by Friday'), undefined);
+});

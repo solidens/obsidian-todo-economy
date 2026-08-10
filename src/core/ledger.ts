@@ -5,6 +5,7 @@
  */
 
 import { award, decayAmount, effectiveK, penaltyFor, price, streakMult } from './economy';
+import { t as L } from './i18n';
 import { dayKey, daysBetween, weekKey } from './time';
 import type { LedgerKind, Reward, State, Task } from './types';
 
@@ -31,7 +32,7 @@ export function rollover(s: State, today: string = dayKey()): void {
 				const burn = decayAmount(s.balance, s.economy.softCap, gap);
 				if (burn > 0) {
 					s.balance -= burn;
-					log(s, 'decay', -burn, `сгорел излишек за ${gap} дн.`);
+					log(s, 'decay', -burn, L().decayNote(gap));
 				}
 			}
 		}
@@ -65,7 +66,7 @@ export function earn(s: State, t: Task, today: string = dayKey()): number {
 	s.balance += amount;
 	s.day.earned += amount;
 	s.granted[t.id] = { amount, on: today };
-	log(s, 'earn', amount, t.title + (amount < raw ? ' (упёрлось в дневной потолок)' : ''));
+	log(s, 'earn', amount, t.title + (amount < raw ? L().cappedNote : ''));
 	return amount;
 }
 
@@ -92,7 +93,7 @@ export function penalize(s: State, t: Task, today: string = dayKey()): number {
 	rollover(s, today);
 	s.balance -= p;
 	s.granted[key] = { amount: -p, on: today };
-	log(s, 'penalty', -p, `просрочено: ${t.title}`);
+	log(s, 'penalty', -p, L().overdueNote(t.title));
 	return p;
 }
 
@@ -113,13 +114,13 @@ export function checkBuy(s: State, r: Reward, doneToday: boolean): BuyCheck {
 	const needsWork = r.kind !== 'restore' || s.strictRestore;
 
 	if (r.weeklyCap !== undefined && (s.week.harm[r.id] ?? 0) >= r.weeklyCap) {
-		return { ok: false, price: p, reason: 'лимит недели выбран' };
+		return { ok: false, price: p, reason: L().weekCapReached };
 	}
 	if (s.balance < p) {
-		return { ok: false, price: p, reason: `не хватает ${p - s.balance}` };
+		return { ok: false, price: p, reason: L().notEnough(p - s.balance) };
 	}
 	if (needsWork && !doneToday) {
-		return { ok: false, price: p, reason: 'сначала закрой задачу' };
+		return { ok: false, price: p, reason: L().closeTaskFirst };
 	}
 	return { ok: true, price: p };
 }

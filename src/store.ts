@@ -24,6 +24,7 @@ import { Notice, TFile, type App, type Plugin } from 'obsidian';
 import * as md from './core/tasks-md';
 import { pruneGranted, rollover } from './core/ledger';
 import { rollRecurring } from './core/recurrence';
+import { t as L } from './core/i18n';
 import { dayKey } from './core/time';
 import { DEFAULT_STATE, type State, type Task } from './core/types';
 
@@ -123,6 +124,7 @@ export class Store {
 		base.lastModel = typeof raw.lastModel === 'string' ? raw.lastModel : null;
 		base.panelFont = typeof raw.panelFont === 'string' ? raw.panelFont : '';
 		base.glyphMode = raw.glyphMode === 'unicode' || raw.glyphMode === 'ascii' ? raw.glyphMode : 'auto';
+		base.langPref = raw.langPref === 'ru' || raw.langPref === 'en' ? raw.langPref : 'auto';
 		this.mergeSynced(base, raw);
 		return base;
 	}
@@ -191,7 +193,7 @@ export class Store {
 	/* ── файл задач ────────────────────────────────────────────────────── */
 
 	get filePath(): string {
-		return this.state.tasksFile || DEFAULT_STATE.tasksFile;
+		return this.state.tasksFile || L().defaultFileName;
 	}
 
 	private getFile(): TFile | null {
@@ -217,9 +219,9 @@ export class Store {
 		}
 		try {
 			this.lastWriteAt = Date.now();
-			return await this.app.vault.create(path, md.STARTER_FILE);
+			return await this.app.vault.create(path, md.starterFile());
 		} catch (e) {
-			new Notice(`Todo Economy: не удалось создать ${path}`);
+			new Notice(L().fileCreateFailed(path));
 			console.error(e);
 			return null;
 		}

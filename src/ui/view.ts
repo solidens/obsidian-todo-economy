@@ -6,6 +6,7 @@
 import { ItemView, Notice, TFile, WorkspaceLeaf } from 'obsidian';
 import type { Brain } from '../brain';
 import { buy, checkBuy, earn, undo } from '../core/ledger';
+import { t as L } from '../core/i18n';
 import { dayKey } from '../core/time';
 import type { Store } from '../store';
 import * as A from './ascii';
@@ -116,10 +117,10 @@ export class EconomyView extends ItemView {
 		if (this.pomo.left === 0) {
 			if (this.pomo.rest) {
 				this.pomo = { taskId: null, left: WORK, running: false, rest: false };
-				new Notice('Перерыв закончился.');
+				new Notice(L().restOver);
 			} else {
 				this.pomo = { ...this.pomo, left: REST, rest: true };
-				new Notice('Помодоро закончился — пять минут.');
+				new Notice(L().pomoOver);
 			}
 		}
 		this.draw();
@@ -165,7 +166,7 @@ export class EconomyView extends ItemView {
 					new Notice(`+${got}  ${next.title}`);
 				} else {
 					const back = undo(s, next);
-					if (back) new Notice(`−${back}  откат`);
+					if (back) new Notice(L().rollback(back));
 				}
 				this.store.save();
 				return;
@@ -190,7 +191,7 @@ export class EconomyView extends ItemView {
 				if (!r) return;
 				const chk = checkBuy(s, r, this.store.doneToday());
 				if (!chk.ok) {
-					new Notice(chk.reason ?? 'Пока нельзя');
+					new Notice(chk.reason ?? L().cannotBuy);
 					return;
 				}
 				const paid = buy(s, r);

@@ -23,6 +23,7 @@ import {
 	effectiveK, incomeFromHistory, MIN_SPAN_DAYS, price, solveK,
 	suggestDayCap, suggestSoftCap, tuneBy,
 } from './economy';
+import { t as L } from './i18n';
 import type { State, Task } from './types';
 
 export type Complaint = 'cheaper' | 'pricier' | 'solve';
@@ -52,7 +53,7 @@ function priceList(s: State): string {
 
 export function rebalance(s: State, want: Complaint, now: number = Date.now()): RebalanceResult {
 	if (!s.rewards.length) {
-		return { applied: false, report: 'Пересчитывать нечего: наград пока нет.' };
+		return { applied: false, report: L().rbNoRewards };
 	}
 
 	const before = snapshot(s);
@@ -62,10 +63,7 @@ export function rebalance(s: State, want: Complaint, now: number = Date.now()): 
 		if (!fact) {
 			return {
 				applied: false,
-				report:
-					`Пока нечего мерить: нужно хотя бы ${MIN_SPAN_DAYS} дней закрытых задач, ` +
-					'чтобы посчитать приход по факту, а не по оценке.\n\n' +
-					'Могу пока просто сделать награды дешевле или дороже — скажи, в какую сторону.',
+				report: L().rbThin(MIN_SPAN_DAYS),
 			};
 		}
 
@@ -78,18 +76,16 @@ export function rebalance(s: State, want: Complaint, now: number = Date.now()): 
 		const diff = fact.monthly - before.income;
 		const verdict =
 			Math.abs(diff) < before.income * 0.1
-				? 'Оценка из онбординга оказалась близка к правде.'
+				? L().rbClose
 				: diff < 0
-					? `Оценка из онбординга была завышена: по факту выходит меньше на ${Math.abs(diff)}.`
-					: `Оценка из онбординга была занижена: по факту выходит больше на ${diff}.`;
+					? L().rbOver(Math.abs(diff))
+					: L().rbUnder(diff);
 
 		return {
 			applied: true,
-			report:
-				`Пересчитал по факту за ${fact.spanDays} дн. (${fact.samples} закрытых задач).\n` +
-				`Приход был ${before.income}/мес по оценке, стал ${fact.monthly}/мес по факту. ${verdict}\n` +
-				(before.tune !== 1 ? 'Ручную поправку убрал — теперь цены снова решены, а не подкручены.\n' : '') +
-				`\nНовые цены:\n${priceList(s)}`,
+			report: L().rbSolved(
+				fact.spanDays, fact.samples, before.income, fact.monthly, verdict,
+				before.tune !== 1 ? L().rbTuneDropped : '', priceList(s)),
 		};
 	}
 
@@ -97,25 +93,18 @@ export function rebalance(s: State, want: Complaint, now: number = Date.now()): 
 	if (next === before.tune) {
 		return {
 			applied: false,
-			report:
-				`Дальше в эту сторону не пущу: поправка уже на пределе (×${before.tune}). ` +
-				'Если система всё равно кажется кривой, дело не в цене — стоит пересобрать награды ' +
-				'или пройти онбординг заново.',
+			report: L().rbAtLimit(before.tune),
 		};
 	}
 	s.economy.tune = next;
 
 	const hint = fact
-		? `\n\nКстати, за ${fact.spanDays} дн. ты зарабатываешь ${fact.monthly}/мес против ${before.income} ` +
-			'по оценке из онбординга. Скажи «пересчитай по факту» — и цены встанут по-честному, ' +
-			'без ручной поправки.'
+		? L().rbHint(fact.spanDays, fact.monthly, before.income)
 		: '';
 
 	return {
 		applied: true,
-		report:
-			`Сделал ${want === 'cheaper' ? 'дешевле' : 'дороже'}: поправка ×${next}.\n\n` +
-			`Цены:\n${priceList(s)}${hint}`,
+		report: L().rbTuned(want, next, priceList(s), hint),
 	};
 }
 

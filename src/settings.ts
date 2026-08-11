@@ -71,15 +71,18 @@ export class EconomySettingsTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName(L().setFile)
 			.setDesc(L().setFileDesc)
-			.addText((t) =>
+			.addText((t) => {
 				t.setPlaceholder(L().defaultFileName)
 					.setValue(s.tasksFile)
 					.onChange((v) => {
 						s.tasksFile = v.trim();
 						store.save();
-						void store.refreshTasks();
-					}),
-			);
+					});
+				// Перечитать файл только когда человек закончил печатать путь —
+				// иначе каждая буква гоняет чтение по несуществующему промежуточному
+				// пути и может рассинхронизировать состояние с параллельным чтением.
+				t.inputEl.addEventListener('blur', () => void store.refreshTasks());
+			});
 
 		new Setting(containerEl)
 			.setName(L().setLang)

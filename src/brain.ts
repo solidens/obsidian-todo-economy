@@ -208,11 +208,10 @@ export class Brain {
 		if (s.onboardStep === 'harmful') {
 			if (!skip) {
 				const j = await this.parse<unknown>(prompts().harmful, msg);
-				if (j !== null) {
-					const harmful = toRewards((j as Record<string, unknown>).rewards ?? j, 'harmful', s.rewards);
-					s.rewards.push(...harmful);
-					if (harmful.length) this.say('assistant', L().harmfulSaved(harmful.length));
-				}
+				if (j === null) return;
+				const harmful = toRewards((j as Record<string, unknown>).rewards ?? j, 'harmful', s.rewards);
+				s.rewards.push(...harmful);
+				if (harmful.length) this.say('assistant', L().harmfulSaved(harmful.length));
 			}
 			this.solve();
 		}

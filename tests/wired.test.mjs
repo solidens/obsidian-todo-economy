@@ -249,6 +249,25 @@ test('неверный ключ отбрасывает на шаг ключа и
 	assert.ok(!JSON.stringify(store.state.chat).includes(KEY));
 });
 
+test('сбой разбора на шаге «вредное» не проталкивает онбординг к решённым ценам', async () => {
+	const { store } = await fresh();
+	store.setApiKey(KEY);
+	const brain = new Brain(store);
+	store.state.onboardStep = 'harmful';
+	store.state.profile = {
+		workdays: 5,
+		routine: [{ title: 'Разбор почты', min: 45, diff: 0.9, prio: 1.2, perWeek: 5 }],
+	};
+	store.state.rewards = [{ id: 'r1', title: 'Прогулка', value: 1, harm: 0.7, freq: 6, kind: 'restore' }];
+
+	serve('извини, я не понял вопрос');
+	await brain.send('залипаю в ленту');
+
+	assert.equal(store.state.onboardStep, 'harmful');
+	assert.equal(store.state.rewards.length, 1);
+	assert.equal(store.state.economy.k, 0);
+});
+
 test('онбординг проходится до решённых цен', async () => {
 	const { store } = await fresh();
 	const brain = new Brain(store);
